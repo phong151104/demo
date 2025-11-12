@@ -10,6 +10,7 @@ import plotly.graph_objects as go
 from scipy import stats
 from utils.ui_components import show_llm_analysis, show_processing_placeholder
 from utils.session_state import init_session_state, clear_data_related_state
+from backend.llm_integration import analyze_eda_with_llm, get_eda_summary, LLMConfig
 
 def render():
     """Render trang Upload & EDA"""
@@ -691,58 +692,104 @@ def render():
             with tab4:
                 st.markdown("### 🤖 Phân Tích Tự Động Bằng AI")
                 
+                # Check LLM configuration
+                is_llm_configured = LLMConfig.is_configured()
+                
+                if not is_llm_configured:
+                    st.info("""
+                    ℹ️ **Chưa cấu hình LLM API**
+                    
+                    Để sử dụng phân tích AI chi tiết, vui lòng:
+                    1. Tạo file `.env` trong thư mục gốc
+                    2. Thêm Google API key: `GOOGLE_API_KEY=...`
+                    3. (Tùy chọn) Chọn model: `GOOGLE_MODEL=gemini-2.5-flash`
+                    4. (Tùy chọn) Chọn provider: `LLM_PROVIDER=google`
+                    
+                    **Lấy Google API key miễn phí tại: https://aistudio.google.com/app/apikey**
+                    
+                    **Hiện tại sẽ sử dụng chế độ phân tích tự động cơ bản.**
+                    """)
+                
                 st.markdown("""
                 <div style="background-color: #262730; padding: 1.5rem; border-radius: 10px; border-left: 4px solid #667eea;">
-                    <h4 style="margin-top: 0; color: #667eea;">💡 Tính Năng AI Analysis</h4>
-                    <p>Khu vực này sẽ hiển thị phân tích tự động từ LLM về:</p>
+                    <h4 style="margin-top: 0; color: #667eea;">💡 Phân Tích Tự Động</h4>
+                    <p>AI sẽ phân tích toàn bộ kết quả EDA và cung cấp:</p>
                     <ul>
-                        <li>✨ Nhận xét về chất lượng dữ liệu</li>
-                        <li>📊 Đánh giá phân phối các biến quan trọng</li>
-                        <li>🔗 Phát hiện mối quan hệ giữa các biến</li>
-                        <li>⚠️ Cảnh báo về outliers và dữ liệu bất thường</li>
-                        <li>💡 Đề xuất các bước tiền xử lý</li>
+                        <li>✨ Đánh giá chất lượng dữ liệu tổng thể</li>
+                        <li>📊 Nhận xét về phân phối các biến quan trọng</li>
+                        <li>🔗 Phát hiện tương quan và mối quan hệ giữa các biến</li>
+                        <li>⚠️ Cảnh báo về outliers, missing data và vấn đề tiềm ẩn</li>
+                        <li>💡 Đề xuất roadmap tiền xử lý dữ liệu chi tiết</li>
+                        <li>🎯 Dự đoán khả năng xây dựng mô hình hiệu quả</li>
                     </ul>
                 </div>
                 """, unsafe_allow_html=True)
                 
                 st.markdown("<br>", unsafe_allow_html=True)
                 
-                if st.button("🔄 Tạo Phân Tích AI", use_container_width=True, type="primary"):
-                    with st.spinner("🤖 AI đang phân tích dữ liệu..."):
-                        # Placeholder response
-                        placeholder_analysis = f"""
-                        **📊 Tổng Quan Dữ Liệu:**
-                        
-                        Dataset có {len(data):,} mẫu với {len(data.columns)} đặc trưng. Dữ liệu có {data.isnull().sum().sum()} giá trị thiếu 
-                        ({(data.isnull().sum().sum() / (len(data) * len(data.columns)) * 100):.1f}% tổng số).
-                        
-                        **🔍 Phân Tích Chi Tiết:**
-                        
-                        - **Biến số**: Dataset có {len(data.select_dtypes(include=[np.number]).columns)} biến số. 
-                          Phân phối của các biến cho thấy một số có độ lệch (skewness) cao, cần xem xét transform.
-                        
-                        - **Biến phân loại**: Có {len(data.select_dtypes(include=['object', 'category']).columns)} biến phân loại. 
-                          Cần mã hóa (encoding) trước khi đưa vào mô hình.
-                        
-                        - **Outliers**: Một số biến có outliers đáng kể. Khuyến nghị sử dụng IQR method hoặc winsorization.
-                        
-                        **💡 Khuyến Nghị:**
-                        
-                        1. Xử lý giá trị thiếu bằng imputation hoặc loại bỏ
-                        2. Chuẩn hóa/Scale các biến số trước khi training
-                        3. Xem xét feature engineering để tạo biến mới
-                        4. Kiểm tra imbalanced data nếu đây là bài toán classification
-                        
-                        ⚡ *Phân tích này là mô phỏng. Backend sẽ tích hợp LLM (OpenAI/LangChain) để phân tích thực tế.*
-                        """
-                        
-                        show_llm_analysis(
-                            "Phân tích dataset và đưa ra nhận xét",
-                            placeholder_analysis
-                        )
+                # Options
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    analysis_button = st.button(
+                        "🔄 Tạo Phân Tích AI" if is_llm_configured else "📊 Tạo Phân Tích Tự Động",
+                        use_container_width=True,
+                        type="primary",
+                        key="ai_analysis_btn"
+                    )
+                with col2:
+                    show_raw_summary = st.checkbox("Xem EDA Summary", value=False, key="show_eda_raw")
                 
-                st.markdown("---")
-                show_processing_placeholder("Tích hợp LLM API (OpenAI GPT-4, Claude, hoặc local LLM)")
+                # Show raw EDA summary if requested
+                if show_raw_summary:
+                    st.markdown("---")
+                    st.markdown("#### 📋 EDA Summary (Raw Data)")
+                    with st.expander("Xem dữ liệu thống kê chi tiết", expanded=False):
+                        summary_text = get_eda_summary(data, format="text")
+                        st.text(summary_text)
+                
+                # Generate AI analysis
+                if analysis_button:
+                    with st.spinner("🤖 Đang phân tích dữ liệu..." if is_llm_configured else "📊 Đang tạo báo cáo..."):
+                        try:
+                            # Get API key and provider from config
+                            api_key = LLMConfig.get_api_key() if is_llm_configured else None
+                            provider = LLMConfig.DEFAULT_PROVIDER
+                            
+                            # Analyze with LLM
+                            analysis_result = analyze_eda_with_llm(data, api_key=api_key, provider=provider)
+                            
+                            # Store in session state
+                            st.session_state.ai_analysis = analysis_result
+                            
+                            st.success("✅ Phân tích hoàn thành!" if is_llm_configured else "✅ Báo cáo đã được tạo!")
+                        
+                        except Exception as e:
+                            st.error(f"❌ Lỗi khi tạo phân tích: {str(e)}")
+                            st.info("💡 Vui lòng kiểm tra API key và kết nối internet.")
+                            import traceback
+                            st.code(traceback.format_exc())
+                
+                # Display analysis if available
+                if 'ai_analysis' in st.session_state and st.session_state.ai_analysis:
+                    st.markdown("---")
+                    st.markdown("### 📝 Kết Quả Phân Tích")
+                    
+                    # Display in a nice container
+                    with st.container():
+                        st.markdown(st.session_state.ai_analysis)
+                    
+                    # Download option
+                    st.markdown("---")
+                    st.download_button(
+                        label="📥 Tải xuống phân tích (Markdown)",
+                        data=st.session_state.ai_analysis,
+                        file_name="eda_analysis.md",
+                        mime="text/markdown",
+                        use_container_width=True
+                    )
+                else:
+                    st.markdown("---")
+                    st.info("👆 Nhấn nút phía trên để bắt đầu phân tích!")
         
         except Exception as e:
             st.error(f"❌ Lỗi khi đọc file: {str(e)}")

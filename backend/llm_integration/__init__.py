@@ -3,13 +3,20 @@ LLM Integration Module
 Tích hợp Large Language Models cho phân tích tự động
 """
 
-# TODO: Implement LLM integration
-# - OpenAIClient
-# - ClaudeClient
-# - LocalLLMClient
-# - analyze_data_quality()
-# - interpret_shap_values()
-# - generate_recommendations()
-# - answer_questions()
-# - create_report()
+from .eda_analyzer import (
+    EDADataCollector,
+    LLMEDAAnalyzer,
+    analyze_eda_with_llm,
+    get_eda_summary
+)
+
+from .config import LLMConfig
+
+__all__ = [
+    'EDADataCollector',
+    'LLMEDAAnalyzer',
+    'analyze_eda_with_llm',
+    'get_eda_summary',
+    'LLMConfig'
+]
 
