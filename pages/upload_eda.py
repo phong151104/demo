@@ -7,8 +7,9 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+from scipy import stats
 from utils.ui_components import show_llm_analysis, show_processing_placeholder
-from utils.session_state import init_session_state
+from utils.session_state import init_session_state, clear_data_related_state
 
 def render():
     """Render trang Upload & EDA"""
@@ -30,7 +31,8 @@ def render():
     uploaded_file = st.file_uploader(
         "Chọn file CSV dữ liệu",
         type=['csv'],
-        help="Upload file CSV chứa dữ liệu khách hàng với các đặc trưng và nhãn"
+        help="Upload file CSV chứa dữ liệu khách hàng với các đặc trưng và nhãn",
+        key="csv_uploader"
     )
     
     if uploaded_file is not None:
@@ -61,18 +63,115 @@ def render():
             with tab1:
                 st.markdown("### 📋 Dữ Liệu Mẫu")
                 
+                # Controls
                 col1, col2 = st.columns([3, 1])
                 with col1:
-                    num_rows = st.slider("Số dòng hiển thị:", 5, 100, 10)
+                    st.info(f"📊 Hiển thị toàn bộ {len(data):,} dòng dữ liệu")
                 with col2:
-                    view_mode = st.selectbox("Chế độ xem:", ["Đầu", "Cuối", "Ngẫu nhiên"])
+                    show_charts = st.checkbox("Hiện biểu đồ", value=True, key="show_charts")
                 
-                if view_mode == "Đầu":
-                    st.dataframe(data.head(num_rows), use_container_width=True, height=400)
-                elif view_mode == "Cuối":
-                    st.dataframe(data.tail(num_rows), use_container_width=True, height=400)
-                else:
-                    st.dataframe(data.sample(min(num_rows, len(data))), use_container_width=True, height=400)
+                # Use all data
+                display_data = data.copy()
+                
+                # Show charts header if enabled
+                if show_charts:
+                    st.markdown("---")
+                    
+                    # Generate mini charts as base64 images for each column
+                    import base64
+                    from io import BytesIO
+                    import matplotlib
+                    matplotlib.use('Agg')
+                    import matplotlib.pyplot as plt
+                    
+                    # Create header row with visualizations
+                    header_html = "<div style='overflow-x: auto;'><table style='width: 100%; border-collapse: collapse; font-size: 0.85rem;'>"
+                    
+                    # Header row with charts
+                    header_html += "<tr style='background-color: #1e1e1e;'>"
+                    
+                    for col_name in data.columns:
+                        col_data = data[col_name]
+                        header_html += f"<td style='border: 1px solid #444; padding: 10px; text-align: center; vertical-align: top; min-width: 120px;'>"
+                        header_html += f"<div style='font-weight: bold; margin-bottom: 5px;'>{col_name}</div>"
+                        
+                        # Generate chart
+                        if pd.api.types.is_numeric_dtype(col_data):
+                            # Numeric - Histogram
+                            col_clean = col_data.dropna()
+                            if len(col_clean) > 0:
+                                fig, ax = plt.subplots(figsize=(1.5, 0.8), facecolor='none')
+                                ax.hist(col_clean, bins=min(15, max(5, len(col_clean) // 10)), color='#667eea', edgecolor='none')
+                                ax.set_xticks([])
+                                ax.set_yticks([])
+                                ax.spines['top'].set_visible(False)
+                                ax.spines['right'].set_visible(False)
+                                ax.spines['bottom'].set_visible(False)
+                                ax.spines['left'].set_visible(False)
+                                ax.patch.set_alpha(0)
+                                
+                                # Save to base64
+                                buffer = BytesIO()
+                                plt.savefig(buffer, format='png', bbox_inches='tight', transparent=True, dpi=50)
+                                buffer.seek(0)
+                                img_base64 = base64.b64encode(buffer.read()).decode()
+                                plt.close(fig)
+                                
+                                header_html += f"<img src='data:image/png;base64,{img_base64}' style='width: 100%; max-width: 120px;'/>"
+                                header_html += f"<div style='font-size: 0.7rem; margin-top: 3px;'>Min: {col_clean.min():.1f} | Max: {col_clean.max():.1f}</div>"
+                                header_html += f"<div style='font-size: 0.7rem;'>Mean: {col_clean.mean():.1f} | Unique: {col_data.nunique()}</div>"
+                        else:
+                            # Categorical - Bar chart
+                            value_counts = col_data.value_counts().head(3)
+                            total = len(col_data)
+                            
+                            if len(value_counts) > 0:
+                                percentages = (value_counts / total * 100)
+                                
+                                fig, ax = plt.subplots(figsize=(1.5, 0.8), facecolor='none')
+                                ax.barh(range(len(value_counts)), percentages.values, color='#764ba2')
+                                ax.set_yticks(range(len(value_counts)))
+                                ax.set_yticklabels([str(v)[:8] for v in value_counts.index], fontsize=6, color='white')
+                                ax.set_xticks([])
+                                ax.spines['top'].set_visible(False)
+                                ax.spines['right'].set_visible(False)
+                                ax.spines['bottom'].set_visible(False)
+                                ax.spines['left'].set_visible(False)
+                                ax.patch.set_alpha(0)
+                                ax.invert_yaxis()
+                                
+                                # Add percentage labels
+                                for i, (idx, pct) in enumerate(zip(value_counts.index, percentages.values)):
+                                    ax.text(pct + 2, i, f'{pct:.0f}%', va='center', fontsize=6, color='white')
+                                
+                                buffer = BytesIO()
+                                plt.savefig(buffer, format='png', bbox_inches='tight', transparent=True, dpi=50)
+                                buffer.seek(0)
+                                img_base64 = base64.b64encode(buffer.read()).decode()
+                                plt.close(fig)
+                                
+                                header_html += f"<img src='data:image/png;base64,{img_base64}' style='width: 100%; max-width: 120px;'/>"
+                                header_html += f"<div style='font-size: 0.7rem; margin-top: 3px;'>Unique: {col_data.nunique()} | Mode: {str(value_counts.index[0])[:10]}</div>"
+                        
+                        # Missing info
+                        missing_count = col_data.isnull().sum()
+                        missing_pct = (missing_count / len(col_data) * 100) if len(col_data) > 0 else 0
+                        if missing_count > 0:
+                            header_html += f"<div style='font-size: 0.65rem; color: #ffaa00; margin-top: 2px;'>⚠️ Missing: {missing_count} ({missing_pct:.1f}%)</div>"
+                        else:
+                            header_html += f"<div style='font-size: 0.65rem; color: #44ff44; margin-top: 2px;'>✅ No missing</div>"
+                        
+                        header_html += "</td>"
+                    
+                    header_html += "</tr></table></div>"
+                    
+                    # Display header with charts
+                    st.markdown(header_html, unsafe_allow_html=True)
+                
+                st.markdown("---")
+                
+                # Display the dataframe with pagination
+                st.dataframe(display_data, use_container_width=True, height=500)
                 
                 # Data info
                 col1, col2, col3, col4 = st.columns(4)
@@ -115,6 +214,199 @@ def render():
                         "text/csv",
                         key='download-stats'
                     )
+                    
+                    st.markdown("---")
+                    
+                    # Detailed column analysis
+                    st.markdown("#### 🔍 Phân Tích Chi Tiết Từng Cột")
+                    
+                    numeric_cols = numeric_data.columns.tolist()
+                    selected_numeric_col = st.selectbox(
+                        "Chọn cột số để phân tích chi tiết:",
+                        numeric_cols,
+                        key="detailed_numeric_col"
+                    )
+                    
+                    if selected_numeric_col:
+                        st.markdown(f"### 📊 Dashboard Phân Tích: `{selected_numeric_col}`")
+                        
+                        col_data = data[selected_numeric_col].dropna()
+                        
+                        # Summary metrics
+                        st.markdown("#### 📈 Tóm Tắt Thống Kê")
+                        metric_cols = st.columns(6)
+                        
+                        with metric_cols[0]:
+                            st.metric("Count", f"{len(col_data):,}")
+                        with metric_cols[1]:
+                            st.metric("Mean", f"{col_data.mean():.2f}")
+                        with metric_cols[2]:
+                            st.metric("Median", f"{col_data.median():.2f}")
+                        with metric_cols[3]:
+                            st.metric("Std Dev", f"{col_data.std():.2f}")
+                        with metric_cols[4]:
+                            st.metric("Min", f"{col_data.min():.2f}")
+                        with metric_cols[5]:
+                            st.metric("Max", f"{col_data.max():.2f}")
+                        
+                        st.markdown("---")
+                        
+                        # Charts section
+                        chart_col1, chart_col2 = st.columns(2)
+                        
+                        with chart_col1:
+                            # Histogram with KDE
+                            st.markdown("##### 📊 Histogram & Distribution")
+                            fig_hist = px.histogram(
+                                data,
+                                x=selected_numeric_col,
+                                nbins=30,
+                                marginal="box",
+                                color_discrete_sequence=['#667eea']
+                            )
+                            fig_hist.update_layout(
+                                template="plotly_dark",
+                                height=350,
+                                showlegend=False,
+                                xaxis_title=selected_numeric_col,
+                                yaxis_title="Frequency"
+                            )
+                            st.plotly_chart(fig_hist, use_container_width=True)
+                        
+                        with chart_col2:
+                            # Box plot for outlier detection
+                            st.markdown("##### 📦 Box Plot (Outlier Detection)")
+                            fig_box = go.Figure()
+                            fig_box.add_trace(go.Box(
+                                y=col_data,
+                                name=selected_numeric_col,
+                                boxmean='sd',
+                                marker_color='#764ba2',
+                                boxpoints='outliers'
+                            ))
+                            fig_box.update_layout(
+                                template="plotly_dark",
+                                height=350,
+                                showlegend=False,
+                                yaxis_title=selected_numeric_col
+                            )
+                            st.plotly_chart(fig_box, use_container_width=True)
+                        
+                        # Quantile and outlier analysis
+                        st.markdown("---")
+                        stat_col1, stat_col2 = st.columns(2)
+                        
+                        with stat_col1:
+                            st.markdown("##### 📊 Phân Vị (Quantiles)")
+                            quantiles = col_data.quantile([0.01, 0.05, 0.25, 0.5, 0.75, 0.95, 0.99])
+                            quantile_df = pd.DataFrame({
+                                'Phân vị': ['1%', '5%', '25%', '50% (Median)', '75%', '95%', '99%'],
+                                'Giá trị': quantiles.values
+                            })
+                            st.dataframe(
+                                quantile_df.style.format({'Giá trị': '{:.2f}'}),
+                                use_container_width=True,
+                                hide_index=True
+                            )
+                        
+                        with stat_col2:
+                            st.markdown("##### ⚠️ Outlier Analysis (IQR Method)")
+                            Q1 = col_data.quantile(0.25)
+                            Q3 = col_data.quantile(0.75)
+                            IQR = Q3 - Q1
+                            lower_bound = Q1 - 1.5 * IQR
+                            upper_bound = Q3 + 1.5 * IQR
+                            
+                            outliers = col_data[(col_data < lower_bound) | (col_data > upper_bound)]
+                            outlier_pct = (len(outliers) / len(col_data) * 100)
+                            
+                            outlier_info = pd.DataFrame({
+                                'Metric': ['Lower Bound', 'Upper Bound', 'Số Outliers', 'Tỷ lệ Outliers'],
+                                'Value': [
+                                    f"{lower_bound:.2f}",
+                                    f"{upper_bound:.2f}",
+                                    f"{len(outliers):,}",
+                                    f"{outlier_pct:.2f}%"
+                                ]
+                            })
+                            st.dataframe(outlier_info, use_container_width=True, hide_index=True)
+                        
+                        # Distribution characteristics
+                        st.markdown("---")
+                        st.markdown("##### 📐 Đặc Điểm Phân Phối")
+                        
+                        dist_cols = st.columns(4)
+                        
+                        # Skewness
+                        skewness = stats.skew(col_data)
+                        with dist_cols[0]:
+                            st.metric("Skewness", f"{skewness:.3f}")
+                            if abs(skewness) < 0.5:
+                                st.caption("✅ Gần đối xứng")
+                            elif skewness > 0:
+                                st.caption("➡️ Lệch phải")
+                            else:
+                                st.caption("⬅️ Lệch trái")
+                        
+                        # Kurtosis
+                        kurtosis = stats.kurtosis(col_data)
+                        with dist_cols[1]:
+                            st.metric("Kurtosis", f"{kurtosis:.3f}")
+                            if abs(kurtosis) < 0.5:
+                                st.caption("✅ Phân phối chuẩn")
+                            elif kurtosis > 0:
+                                st.caption("📈 Nhọn (peaked)")
+                            else:
+                                st.caption("📉 Bẹt (flat)")
+                        
+                        # Range
+                        with dist_cols[2]:
+                            st.metric("Range", f"{col_data.max() - col_data.min():.2f}")
+                            st.caption("Max - Min")
+                        
+                        # CV (Coefficient of Variation)
+                        cv = (col_data.std() / col_data.mean() * 100) if col_data.mean() != 0 else 0
+                        with dist_cols[3]:
+                            st.metric("CV", f"{cv:.2f}%")
+                            if cv < 15:
+                                st.caption("✅ Độ biến thiên thấp")
+                            elif cv < 30:
+                                st.caption("⚠️ Độ biến thiên trung bình")
+                            else:
+                                st.caption("🔴 Độ biến thiên cao")
+                        
+                        # Value distribution table
+                        st.markdown("---")
+                        st.markdown("##### 📋 Phân Bổ Giá Trị (Binned)")
+                        
+                        # Create bins
+                        n_bins = 10
+                        bins = pd.cut(col_data, bins=n_bins)
+                        bin_counts = bins.value_counts().sort_index()
+                        
+                        bin_df = pd.DataFrame({
+                            'Khoảng giá trị': bin_counts.index.astype(str),
+                            'Số lượng': bin_counts.values,
+                            'Tỷ lệ (%)': (bin_counts.values / len(col_data) * 100).round(2)
+                        })
+                        
+                        st.dataframe(bin_df, use_container_width=True, hide_index=True)
+                        
+                        # Histogram of bins
+                        fig_bin = px.bar(
+                            bin_df,
+                            x='Khoảng giá trị',
+                            y='Số lượng',
+                            color='Tỷ lệ (%)',
+                            color_continuous_scale='Viridis',
+                            title=f"Phân bổ giá trị của {selected_numeric_col}"
+                        )
+                        fig_bin.update_layout(
+                            template="plotly_dark",
+                            height=350,
+                            xaxis_tickangle=-45
+                        )
+                        st.plotly_chart(fig_bin, use_container_width=True)
                 
                 # Categorical columns
                 categorical_data = data.select_dtypes(include=['object', 'category'])
@@ -150,13 +442,13 @@ def render():
                     
                     numeric_cols = data.select_dtypes(include=[np.number]).columns.tolist()
                     if numeric_cols:
-                        selected_col = st.selectbox("Chọn biến để vẽ:", numeric_cols)
+                        selected_col = st.selectbox("Chọn biến để vẽ:", numeric_cols, key="upload_hist_col")
                         
                         col1, col2 = st.columns([2, 1])
                         with col1:
-                            bins = st.slider("Số bins:", 10, 100, 30)
+                            bins = st.slider("Số bins:", 10, 100, 30, key="upload_hist_bins")
                         with col2:
-                            show_kde = st.checkbox("Hiện KDE", value=True)
+                            show_kde = st.checkbox("Hiện KDE", value=True, key="upload_hist_kde")
                         
                         # Create histogram
                         fig = px.histogram(
@@ -197,7 +489,8 @@ def render():
                         selected_cols = st.multiselect(
                             "Chọn các biến để so sánh:",
                             numeric_cols,
-                            default=numeric_cols[:min(4, len(numeric_cols))]
+                            default=numeric_cols[:min(4, len(numeric_cols))],
+                            key="upload_box_cols"
                         )
                         
                         if selected_cols:
@@ -251,7 +544,7 @@ def render():
                         # Find high correlations
                         st.markdown("#### 🔍 Các Cặp Biến Có Tương Quan Cao")
                         
-                        threshold = st.slider("Ngưỡng tương quan:", 0.5, 0.95, 0.7, 0.05)
+                        threshold = st.slider("Ngưỡng tương quan:", 0.5, 0.95, 0.7, 0.05, key="upload_corr_threshold")
                         
                         high_corr = []
                         for i in range(len(corr_matrix.columns)):
@@ -329,6 +622,11 @@ def render():
             st.error(f"❌ Lỗi khi đọc file: {str(e)}")
     
     else:
+        # Clear session data when no file is uploaded
+        if 'data' in st.session_state and st.session_state.data is not None:
+            clear_data_related_state()
+            st.info("🔄 Dữ liệu cũ đã được xóa. Vui lòng upload file mới.")
+        
         # Show sample format
         print("DEBUG: No file uploaded, showing sample format")
         st.info("📝 No file uploaded. Please select a CSV file.")

@@ -35,6 +35,29 @@ def clear_session_state():
     for key in list(st.session_state.keys()):
         del st.session_state[key]
 
+def clear_data_related_state():
+    """Xóa các state liên quan đến data khi upload file mới"""
+    keys_to_clear = [
+        'data', 
+        'processed_data', 
+        'selected_features', 
+        'model', 
+        'model_type', 
+        'model_metrics', 
+        'explainer', 
+        'shap_values',
+        'prediction_input',
+        'prediction_result'
+    ]
+    for key in keys_to_clear:
+        if key in st.session_state:
+            if key == 'selected_features':
+                st.session_state[key] = []
+            elif key == 'model_metrics':
+                st.session_state[key] = {}
+            else:
+                st.session_state[key] = None
+
 def get_session_info():
     """Lấy thông tin về session hiện tại"""
     info = {
