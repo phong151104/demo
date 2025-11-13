@@ -133,25 +133,21 @@ def render():
                 # Get rows with any missing values
                 rows_with_missing = data[data.isnull().any(axis=1)]
                 
-                col_preview1, col_preview2 = st.columns([2, 1])
+                col_preview1, col_preview2 = st.columns([3, 2])
                 with col_preview1:
                     st.metric("Số dòng có missing", len(rows_with_missing), 
                              f"{len(rows_with_missing)/len(data)*100:.1f}% tổng số")
                 with col_preview2:
-                    show_missing_rows = st.checkbox("Hiển thị các dòng", value=False, key="show_missing_rows")
+                    show_missing_rows = st.checkbox("Hiển thị các dòng", value=True, key="show_missing_rows")
                 
                 if show_missing_rows:
-                    # Filter options
-                    filter_col1, filter_col2 = st.columns(2)
-                    with filter_col1:
-                        selected_col_filter = st.selectbox(
-                            "Ưu tiên hiển thị cột thiếu:",
-                            ["Tất cả"] + list(missing_data.index),
-                            key="missing_col_filter",
-                            help="Chọn cột để ưu tiên hiển thị các dòng thiếu dữ liệu ở cột đó lên trên"
-                        )
-                    with filter_col2:
-                        num_rows_show = st.slider("Số dòng hiển thị:", 5, 100, 20, 5, key="missing_rows_slider")
+                    # Filter options - select column to prioritize
+                    selected_col_filter = st.selectbox(
+                        "Ưu tiên hiển thị cột thiếu:",
+                        ["Tất cả"] + list(missing_data.index),
+                        key="missing_col_filter",
+                        help="Chọn cột để ưu tiên sắp xếp các dòng thiếu dữ liệu ở cột đó lên trên. Tất cả các dòng sẽ được hiển thị."
+                    )
                     
                     # Sort data to prioritize rows with missing data in selected column
                     if selected_col_filter != "Tất cả":
@@ -160,14 +156,15 @@ def render():
                         rows_display['_priority'] = rows_display[selected_col_filter].isnull().astype(int)
                         # Sort by priority (missing in selected column first), then by index
                         rows_display = rows_display.sort_values('_priority', ascending=False)
-                        # Drop priority column and take top N
-                        display_data = rows_display.drop('_priority', axis=1).head(num_rows_show)
+                        # Drop priority column - SHOW ALL ROWS
+                        display_data = rows_display.drop('_priority', axis=1)
                         
                         # Show info about filtering
                         missing_in_selected = rows_with_missing[selected_col_filter].isnull().sum()
-                        st.info(f"🎯 Ưu tiên: {missing_in_selected} dòng thiếu dữ liệu ở `{selected_col_filter}` được hiển thị trước")
+                        st.info(f"🎯 Ưu tiên: {missing_in_selected} dòng thiếu dữ liệu ở `{selected_col_filter}` được sắp xếp lên trên. Hiển thị tất cả {len(display_data):,} dòng.")
                     else:
-                        display_data = rows_with_missing.head(num_rows_show)
+                        # SHOW ALL rows with missing data
+                        display_data = rows_with_missing
                     
                     # Highlight missing values with special color for selected column
                     def highlight_missing(val):
@@ -344,76 +341,305 @@ def render():
                 st.success("✅ Không có giá trị thiếu trong dataset")
         
         with col2:
-            st.markdown("#### 2️⃣ Mã Hóa Biến Phân Loại")
+            st.markdown("#### 📊 Gợi Ý & Thống Kê")
             
-            categorical_cols = data.select_dtypes(include=['object', 'category']).columns.tolist()
+            # Show processing tips
+            st.markdown("""
+            <div style="background-color: #262730; padding: 1.2rem; border-radius: 10px; border-left: 4px solid #667eea;">
+                <h4 style="margin-top: 0; color: #667eea;">💡 Gợi Ý Xử Lý</h4>
+                <ul style="font-size: 0.9rem; margin-bottom: 0;">
+                    <li><strong>Mean</strong>: Tốt cho dữ liệu phân phối chuẩn</li>
+                    <li><strong>Median</strong>: Tốt khi có outliers</li>
+                    <li><strong>Mode</strong>: Cho biến phân loại</li>
+                    <li><strong>Forward/Backward Fill</strong>: Cho time series</li>
+                    <li><strong>Interpolation</strong>: Cho dữ liệu liên tục</li>
+                </ul>
+            </div>
+            """, unsafe_allow_html=True)
             
-            if categorical_cols:
-                st.info(f"📝 Có {len(categorical_cols)} biến phân loại cần mã hóa")
+            st.markdown("---")
+            
+            # Show missing patterns if data has missing
+            missing_data = data.isnull().sum()
+            missing_data = missing_data[missing_data > 0]
+            
+            if len(missing_data) > 0:
+                st.markdown("##### 📈 Phân Tích Mẫu Thiếu")
                 
-                # Display categorical columns
-                for col in categorical_cols[:5]:  # Show first 5
+                # Calculate missing percentage by column
+                missing_pct = (missing_data / len(data) * 100).sort_values(ascending=False)
+                
+                # Create simple bar chart
+                import plotly.express as px
+                fig = px.bar(
+                    x=missing_pct.values,
+                    y=missing_pct.index,
+                    orientation='h',
+                    labels={'x': 'Tỷ lệ (%)', 'y': 'Cột'},
+                    title="Tỷ lệ dữ liệu thiếu theo cột"
+                )
+                fig.update_layout(
+                    template="plotly_dark",
+                    height=300,
+                    showlegend=False,
+                    margin=dict(l=0, r=0, t=30, b=0)
+                )
+                fig.update_traces(marker_color='#ff6b6b')
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Quick stats
+                st.markdown("##### 📊 Thống Kê Nhanh")
+                metric_col1, metric_col2 = st.columns(2)
+                with metric_col1:
+                    st.metric("Cột thiếu nhiều nhất", missing_pct.index[0] if len(missing_pct) > 0 else "N/A")
+                with metric_col2:
+                    st.metric("Tỷ lệ", f"{missing_pct.values[0]:.1f}%" if len(missing_pct) > 0 else "0%")
+            else:
+                st.success("✨ Dữ liệu hoàn chỉnh, không có giá trị thiếu!")
+        
+        # Section 2: Mã Hóa Biến Phân Loại (Moved to separate section)
+        st.markdown("---")
+        st.markdown("### 2️⃣ Mã Hóa Biến Phân Loại")
+        
+        categorical_cols = data.select_dtypes(include=['object', 'category']).columns.tolist()
+        
+        if categorical_cols:
+            st.warning(f"⚠️ Có {len(categorical_cols)} biến phân loại cần mã hóa")
+            
+            # Show categorical columns summary
+            col_enc1, col_enc2 = st.columns([1, 1])
+            
+            with col_enc1:
+                st.markdown("##### 📋 Danh Sách Biến Phân Loại")
+                
+                cat_summary = []
+                for col in categorical_cols:
                     unique_vals = data[col].nunique()
-                    st.text(f"• {col}: {unique_vals} giá trị khác nhau")
+                    cat_summary.append({
+                        'Cột': col,
+                        'Số giá trị khác nhau': unique_vals,
+                        'Giá trị phổ biến': data[col].mode()[0] if not data[col].mode().empty else 'N/A'
+                    })
                 
-                if len(categorical_cols) > 5:
-                    st.text(f"... và {len(categorical_cols) - 5} cột khác")
+                cat_df = pd.DataFrame(cat_summary)
+                st.dataframe(cat_df, use_container_width=True, hide_index=True)
+            
+            with col_enc2:
+                st.markdown("##### ⚙️ Cấu Hình Mã Hóa Từng Cột")
                 
-                # Encoding options
-                st.markdown("**Phương pháp mã hóa:**")
+                # Select column to encode
+                selected_enc_col = st.selectbox(
+                    "Chọn cột để mã hóa:",
+                    categorical_cols,
+                    key="selected_enc_col"
+                )
+                
+                # Show column info
+                unique_count = data[selected_enc_col].nunique()
+                st.metric("Số giá trị khác nhau", unique_count)
+                
+                # Encoding method selection
                 encoding_method = st.selectbox(
-                    "Chọn phương pháp:",
+                    "Phương pháp mã hóa:",
                     ["One-Hot Encoding", "Label Encoding", "Target Encoding", "Ordinal Encoding"],
                     key="encoding_method"
                 )
                 
-                if st.button("🔄 Áp Dụng Mã Hóa", key="apply_encoding"):
+                # Initialize encoding config
+                if 'encoding_config' not in st.session_state:
+                    st.session_state.encoding_config = {}
+                
+                # Add configuration button
+                enc_btn_col1, enc_btn_col2 = st.columns(2)
+                with enc_btn_col1:
+                    if st.button("➕ Thêm Cấu Hình", key="add_enc_config", use_container_width=True):
+                        st.session_state.encoding_config[selected_enc_col] = {
+                            'method': encoding_method,
+                            'unique_count': unique_count
+                        }
+                        st.success(f"✅ Đã thêm cấu hình cho {selected_enc_col}")
+                
+                with enc_btn_col2:
+                    if selected_enc_col in st.session_state.encoding_config:
+                        if st.button("�️ Xóa", key="remove_enc_config", use_container_width=True):
+                            del st.session_state.encoding_config[selected_enc_col]
+                            st.success(f"✅ Đã xóa cấu hình")
+                            st.rerun()
+            
+            # Show current encoding configurations
+            if st.session_state.encoding_config:
+                st.markdown("---")
+                st.markdown("##### 📝 Cấu Hình Mã Hóa Hiện Tại")
+                
+                enc_config_df = pd.DataFrame([
+                    {
+                        'Cột': col,
+                        'Phương pháp': cfg['method'],
+                        'Số giá trị': cfg['unique_count']
+                    }
+                    for col, cfg in st.session_state.encoding_config.items()
+                ])
+                
+                st.dataframe(enc_config_df, use_container_width=True, hide_index=True)
+                
+                # Apply all encoding configurations
+                if st.button("✅ Áp Dụng Tất Cả Mã Hóa", type="primary", use_container_width=True, key="apply_all_encoding"):
                     with st.spinner("Đang mã hóa..."):
-                        show_processing_placeholder(f"Mã hóa biến phân loại bằng {encoding_method}")
-                        st.success("✅ Đã mã hóa biến phân loại!")
+                        show_processing_placeholder(f"Mã hóa {len(st.session_state.encoding_config)} biến phân loại")
+                        st.success(f"✅ Đã mã hóa {len(st.session_state.encoding_config)} biến!")
+                        st.info("💡 Cấu hình mã hóa đã được lưu lại.")
             else:
-                st.success("✅ Không có biến phân loại cần mã hóa")
+                st.info("💡 Chưa có cấu hình mã hóa nào. Hãy chọn cột và phương pháp ở trên.")
         
+        else:
+            st.success("✅ Không có biến phân loại cần mã hóa")
+        
+        # Section 3: Chuẩn Hóa/Scale
         st.markdown("---")
+        st.markdown("### 3️⃣ Chuẩn Hóa/Scaling")
         
-        # Additional preprocessing steps
-        col1, col2, col3 = st.columns(3)
+        col_scale1, col_scale2 = st.columns([1, 1])
         
-        with col1:
-            st.markdown("#### 3️⃣ Chuẩn Hóa/Scale")
+        with col_scale1:
+            st.markdown("##### ⚙️ Cấu Hình Scaling")
+            
             scaling_method = st.selectbox(
                 "Phương pháp:",
                 ["Standard Scaler", "Min-Max Scaler", "Robust Scaler", "No Scaling"],
-                key="scaling_method"
+                key="scaling_method",
+                help="Standard Scaler: z-score normalization\nMin-Max: scale to [0,1]\nRobust: resistant to outliers"
             )
             
-            if st.button("🔄 Áp Dụng Scaling", key="apply_scaling"):
-                show_processing_placeholder(f"Scaling với {scaling_method}")
-                st.success("✅ Đã scaling!")
+            # Select columns to scale
+            numeric_cols_for_scale = data.select_dtypes(include=[np.number]).columns.tolist()
+            if numeric_cols_for_scale:
+                selected_scale_cols = st.multiselect(
+                    "Chọn các cột cần scaling:",
+                    numeric_cols_for_scale,
+                    default=numeric_cols_for_scale[:min(5, len(numeric_cols_for_scale))],
+                    key="selected_scale_cols"
+                )
+                
+                if st.button("✅ Áp Dụng Scaling", key="apply_scaling", use_container_width=True, type="primary"):
+                    if selected_scale_cols:
+                        with st.spinner(f"Đang scaling {len(selected_scale_cols)} cột..."):
+                            show_processing_placeholder(f"Scaling {len(selected_scale_cols)} cột với {scaling_method}")
+                            st.success(f"✅ Đã scaling {len(selected_scale_cols)} cột!")
+                    else:
+                        st.warning("Vui lòng chọn ít nhất 1 cột để scaling")
+            else:
+                st.info("Không có cột số nào để scaling")
         
-        with col2:
-            st.markdown("#### 4️⃣ Xử Lý Outliers")
+        with col_scale2:
+            st.markdown("##### 📊 Thông Tin")
+            
+            st.info("""
+            **Standard Scaler**: Chuẩn hóa về mean=0, std=1
+            
+            **Min-Max Scaler**: Scale về khoảng [0, 1]
+            
+            **Robust Scaler**: Sử dụng median và IQR, tốt cho data có outliers
+            """)
+        
+        # Section 4: Xử Lý Outliers
+        st.markdown("---")
+        st.markdown("### 4️⃣ Xử Lý Outliers")
+        
+        col_outlier1, col_outlier2 = st.columns([1, 1])
+        
+        with col_outlier1:
+            st.markdown("##### ⚙️ Cấu Hình Xử Lý Outliers")
+            
             outlier_method = st.selectbox(
                 "Phương pháp:",
                 ["IQR Method", "Z-Score", "Winsorization", "Keep All"],
-                key="outlier_method"
+                key="outlier_method",
+                help="IQR: Sử dụng Interquartile Range\nZ-Score: Dựa trên độ lệch chuẩn\nWinsorization: Thay thế outliers bằng giá trị ngưỡng"
             )
             
-            if st.button("🔄 Xử Lý Outliers", key="apply_outliers"):
-                show_processing_placeholder(f"Xử lý outliers bằng {outlier_method}")
-                st.success("✅ Đã xử lý outliers!")
+            if outlier_method != "Keep All":
+                threshold = st.slider(
+                    "Ngưỡng:",
+                    1.0, 5.0, 1.5 if outlier_method == "IQR Method" else 3.0, 0.5,
+                    key="outlier_threshold"
+                )
+            
+            numeric_cols_for_outlier = data.select_dtypes(include=[np.number]).columns.tolist()
+            if numeric_cols_for_outlier:
+                selected_outlier_cols = st.multiselect(
+                    "Chọn các cột cần xử lý outliers:",
+                    numeric_cols_for_outlier,
+                    key="selected_outlier_cols"
+                )
+                
+                if st.button("✅ Xử Lý Outliers", key="apply_outliers", use_container_width=True, type="primary"):
+                    if selected_outlier_cols:
+                        with st.spinner(f"Đang xử lý outliers..."):
+                            show_processing_placeholder(f"Xử lý outliers bằng {outlier_method}")
+                            st.success(f"✅ Đã xử lý outliers cho {len(selected_outlier_cols)} cột!")
+                    else:
+                        st.warning("Vui lòng chọn ít nhất 1 cột")
         
-        with col3:
-            st.markdown("#### 5️⃣ Cân Bằng Dữ Liệu")
+        with col_outlier2:
+            st.markdown("##### 📊 Thống Kê Outliers")
+            
+            if numeric_cols_for_outlier:
+                # Show outlier statistics
+                outlier_stats = []
+                for col in numeric_cols_for_outlier[:5]:  # Show first 5
+                    col_data = data[col].dropna()
+                    if len(col_data) > 0:
+                        Q1 = col_data.quantile(0.25)
+                        Q3 = col_data.quantile(0.75)
+                        IQR = Q3 - Q1
+                        outliers = col_data[(col_data < Q1 - 1.5 * IQR) | (col_data > Q3 + 1.5 * IQR)]
+                        outlier_pct = len(outliers) / len(col_data) * 100
+                        
+                        outlier_stats.append({
+                            'Cột': col,
+                            'Số outliers': len(outliers),
+                            'Tỷ lệ (%)': f"{outlier_pct:.2f}"
+                        })
+                
+                if outlier_stats:
+                    st.dataframe(pd.DataFrame(outlier_stats), use_container_width=True, hide_index=True)
+        
+        # Section 5: Cân Bằng Dữ Liệu
+        st.markdown("---")
+        st.markdown("### 5️⃣ Cân Bằng Dữ Liệu")
+        
+        col_balance1, col_balance2 = st.columns([1, 1])
+        
+        with col_balance1:
+            st.markdown("##### ⚙️ Cấu Hình Balancing")
+            
             balance_method = st.selectbox(
                 "Phương pháp:",
                 ["SMOTE", "Random Over-sampling", "Random Under-sampling", "No Balancing"],
-                key="balance_method"
+                key="balance_method",
+                help="SMOTE: Synthetic Minority Over-sampling\nOver-sampling: Nhân bản class thiểu số\nUnder-sampling: Giảm class đa số"
             )
             
-            if st.button("🔄 Cân Bằng Dữ Liệu", key="apply_balance"):
-                show_processing_placeholder(f"Cân bằng dữ liệu bằng {balance_method}")
-                st.success("✅ Đã cân bằng dữ liệu!")
+            if st.button("✅ Cân Bằng Dữ Liệu", key="apply_balance", use_container_width=True, type="primary"):
+                with st.spinner("Đang cân bằng dữ liệu..."):
+                    show_processing_placeholder(f"Cân bằng dữ liệu bằng {balance_method}")
+                    st.success("✅ Đã cân bằng dữ liệu!")
+        
+        with col_balance2:
+            st.markdown("##### 📊 Phân Bổ Class")
+            
+            # Try to detect target column
+            potential_targets = [col for col in data.columns if 'target' in col.lower() or 'default' in col.lower() or 'label' in col.lower()]
+            
+            if potential_targets:
+                target_col = potential_targets[0]
+                class_dist = data[target_col].value_counts()
+                
+                st.metric("Target column", target_col)
+                for cls, count in class_dist.items():
+                    st.text(f"Class {cls}: {count} ({count/len(data)*100:.1f}%)")
+            else:
+                st.info("Chưa xác định được target column. Vui lòng chọn target ở tab 'Chọn Biến'.")
     
     # Tab 2: Binning
     with tab2:
