@@ -117,14 +117,15 @@ def render():
             
             st.markdown("---")
         
+        st.markdown("### 1️⃣ Tổng Quan Dữ Liệu Thiếu")
+        
+        # Calculate missing data
+        missing_data = data.isnull().sum()
+        missing_data = missing_data[missing_data > 0].sort_values(ascending=False)
+        
         col1, col2 = st.columns([3, 2])
         
         with col1:
-            st.markdown("#### 1️⃣ Xử Lý Giá Trị Thiếu")
-            
-            missing_data = data.isnull().sum()
-            missing_data = missing_data[missing_data > 0].sort_values(ascending=False)
-            
             if len(missing_data) > 0:
                 st.warning(f"⚠️ Có {len(missing_data)} cột chứa giá trị thiếu")
                 
@@ -197,9 +198,227 @@ def render():
         
         st.markdown("---")
         
+        # Section 2: Xử Lý Biến Định Danh & Giá Trị Không Hợp Lệ
+        st.markdown("### 2️⃣ Xử Lý Biến Định Danh & Giá Trị Không Hợp Lệ")
+        
+        col_id1, col_id2 = st.columns([1, 1])
+        
+        with col_id1:
+            st.markdown("##### 🔍 Xóa/Loại Biến Định Danh")
+            
+            st.markdown("""
+            <div style="background-color: #262730; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                <p style="margin: 0; font-size: 0.9rem;">💡 <strong>Biến định danh</strong> không mang thông tin dự đoán, 
+                nên loại bỏ khỏi mô hình:</p>
+                <ul style="font-size: 0.85rem; margin: 0.5rem 0 0 1rem;">
+                    <li>ID khách hàng (customer_id, user_id)</li>
+                    <li>Số hợp đồng (contract_id, loan_id)</li>
+                    <li>Số CMND/CCCD, số tài khoản</li>
+                    <li>Các mã định danh khác</li>
+                </ul>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Show all columns with unique count info
+            all_cols = data.columns.tolist()
+            
+            if all_cols:
+                st.info(f"📋 Dataset hiện có {len(all_cols)} cột")
+                
+                # Show columns info
+                cols_info = []
+                for col in all_cols:
+                    unique_count = data[col].nunique()
+                    unique_pct = round(unique_count / len(data) * 100, 2)
+                    cols_info.append({
+                        'Cột': col,
+                        'Số giá trị duy nhất': unique_count,
+                        'Tỷ lệ unique (%)': unique_pct
+                    })
+                
+                cols_df = pd.DataFrame(cols_info)
+                st.dataframe(cols_df, use_container_width=True, hide_index=True, height=300)
+                
+                # Select columns to remove
+                cols_to_remove = st.multiselect(
+                    "Chọn cột để loại bỏ:",
+                    all_cols,
+                    key="id_cols_to_remove",
+                    help="Chọn các cột định danh cần loại bỏ khỏi dataset"
+                )
+                
+                if st.button("🗑️ Loại Bỏ Các Cột Đã Chọn", key="remove_id_cols", use_container_width=True, type="primary"):
+                    if cols_to_remove:
+                        # Backup before removing
+                        if 'removed_columns_backup' not in st.session_state:
+                            st.session_state.removed_columns_backup = {}
+                        
+                        for col in cols_to_remove:
+                            st.session_state.removed_columns_backup[col] = st.session_state.data[col].copy()
+                            st.session_state.data = st.session_state.data.drop(columns=[col])
+                        
+                        st.success(f"✅ Đã loại bỏ {len(cols_to_remove)} cột!")
+                        st.rerun()
+                    else:
+                        st.warning("Vui lòng chọn ít nhất 1 cột")
+        
+        with col_id2:
+            st.markdown("##### ⚠️ Xử Lý Giá Trị Không Hợp Lệ")
+            
+            st.markdown("""
+            <div style="background-color: #262730; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                <p style="margin: 0; font-size: 0.9rem;">💡 <strong>Ví dụ giá trị vô lý cần xử lý:</strong></p>
+                <ul style="font-size: 0.85rem; margin: 0.5rem 0 0 1rem;">
+                    <li>Thu nhập âm → 0 hoặc NA</li>
+                    <li>Tuổi < 18 hoặc > 90 → ngưỡng</li>
+                    <li>Dư nợ âm → 0</li>
+                    <li>Kỳ hạn ≤ 0 → NA hoặc min</li>
+                </ul>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Select column to validate
+            numeric_cols_validate = data.select_dtypes(include=[np.number]).columns.tolist()
+            
+            if numeric_cols_validate:
+                selected_validate_col = st.selectbox(
+                    "Chọn cột cần xử lý:",
+                    numeric_cols_validate,
+                    key="validate_col",
+                    help="Chọn cột số để kiểm tra và xử lý giá trị không hợp lệ"
+                )
+                
+                # Show statistics
+                col_data_valid = data[selected_validate_col].dropna()
+                if len(col_data_valid) > 0:
+                    col_min = col_data_valid.min()
+                    col_max = col_data_valid.max()
+                    col_mean = col_data_valid.mean()
+                    
+                    stat_col1, stat_col2, stat_col3 = st.columns(3)
+                    with stat_col1:
+                        st.metric("Min", f"{col_min:.2f}")
+                    with stat_col2:
+                        st.metric("Mean", f"{col_mean:.2f}")
+                    with stat_col3:
+                        st.metric("Max", f"{col_max:.2f}")
+                    
+                    st.markdown("---")
+                    
+                    # Configure validation rule
+                    validation_type = st.selectbox(
+                        "Loại quy tắc:",
+                        ["Giá trị âm", "Ngưỡng tối thiểu", "Ngưỡng tối đa", "Khoảng giá trị"],
+                        key="validation_type"
+                    )
+                    
+                    if validation_type == "Giá trị âm":
+                        invalid_count = len(data[data[selected_validate_col] < 0])
+                        st.info(f"📊 Tìm thấy **{invalid_count}** giá trị âm")
+                        
+                        action = st.radio(
+                            "Hành động:",
+                            ["Chuyển về 0", "Chuyển về NA"],
+                            key="negative_action"
+                        )
+                        
+                        if st.button("✅ Áp Dụng", key="apply_negative", use_container_width=True, type="primary"):
+                            if invalid_count > 0:
+                                if action == "Chuyển về 0":
+                                    st.session_state.data.loc[st.session_state.data[selected_validate_col] < 0, selected_validate_col] = 0
+                                else:
+                                    st.session_state.data.loc[st.session_state.data[selected_validate_col] < 0, selected_validate_col] = np.nan
+                                st.success(f"✅ Đã xử lý {invalid_count} giá trị âm!")
+                                st.rerun()
+                            else:
+                                st.info("Không có giá trị âm để xử lý")
+                    
+                    elif validation_type == "Ngưỡng tối thiểu":
+                        min_threshold = st.number_input(
+                            "Ngưỡng min (giá trị < ngưỡng sẽ bị xử lý):",
+                            value=float(col_min),
+                            key="min_threshold"
+                        )
+                        invalid_count = len(data[data[selected_validate_col] < min_threshold])
+                        st.info(f"📊 Tìm thấy **{invalid_count}** giá trị < {min_threshold}")
+                        
+                        action = st.radio(
+                            "Hành động:",
+                            [f"Chuyển về {min_threshold}", "Chuyển về NA"],
+                            key="min_action"
+                        )
+                        
+                        if st.button("✅ Áp Dụng", key="apply_min", use_container_width=True, type="primary"):
+                            if invalid_count > 0:
+                                if "NA" in action:
+                                    st.session_state.data.loc[st.session_state.data[selected_validate_col] < min_threshold, selected_validate_col] = np.nan
+                                else:
+                                    st.session_state.data.loc[st.session_state.data[selected_validate_col] < min_threshold, selected_validate_col] = min_threshold
+                                st.success(f"✅ Đã xử lý {invalid_count} giá trị!")
+                                st.rerun()
+                    
+                    elif validation_type == "Ngưỡng tối đa":
+                        max_threshold = st.number_input(
+                            "Ngưỡng max (giá trị > ngưỡng sẽ bị xử lý):",
+                            value=float(col_max),
+                            key="max_threshold"
+                        )
+                        invalid_count = len(data[data[selected_validate_col] > max_threshold])
+                        st.info(f"📊 Tìm thấy **{invalid_count}** giá trị > {max_threshold}")
+                        
+                        action = st.radio(
+                            "Hành động:",
+                            [f"Chuyển về {max_threshold}", "Chuyển về NA"],
+                            key="max_action"
+                        )
+                        
+                        if st.button("✅ Áp Dụng", key="apply_max", use_container_width=True, type="primary"):
+                            if invalid_count > 0:
+                                if "NA" in action:
+                                    st.session_state.data.loc[st.session_state.data[selected_validate_col] > max_threshold, selected_validate_col] = np.nan
+                                else:
+                                    st.session_state.data.loc[st.session_state.data[selected_validate_col] > max_threshold, selected_validate_col] = max_threshold
+                                st.success(f"✅ Đã xử lý {invalid_count} giá trị!")
+                                st.rerun()
+                    
+                    elif validation_type == "Khoảng giá trị":
+                        col_range1, col_range2 = st.columns(2)
+                        with col_range1:
+                            range_min = st.number_input("Min:", value=float(col_min), key="range_min")
+                        with col_range2:
+                            range_max = st.number_input("Max:", value=float(col_max), key="range_max")
+                        
+                        invalid_count = len(data[(data[selected_validate_col] < range_min) | (data[selected_validate_col] > range_max)])
+                        st.info(f"📊 Tìm thấy **{invalid_count}** giá trị ngoài [{range_min}, {range_max}]")
+                        
+                        action = st.radio(
+                            "Hành động:",
+                            ["Clamp về ngưỡng", "Chuyển về NA"],
+                            key="range_action",
+                            help="Clamp: giới hạn giá trị trong khoảng min-max"
+                        )
+                        
+                        if st.button("✅ Áp Dụng", key="apply_range", use_container_width=True, type="primary"):
+                            if invalid_count > 0:
+                                if action == "Clamp về ngưỡng":
+                                    st.session_state.data[selected_validate_col] = st.session_state.data[selected_validate_col].clip(range_min, range_max)
+                                else:
+                                    mask = (st.session_state.data[selected_validate_col] < range_min) | (st.session_state.data[selected_validate_col] > range_max)
+                                    st.session_state.data.loc[mask, selected_validate_col] = np.nan
+                                st.success(f"✅ Đã xử lý {invalid_count} giá trị!")
+                                st.rerun()
+                else:
+                    st.warning("Cột này không có dữ liệu hợp lệ")
+            else:
+                st.info("Không có cột số nào để kiểm tra")
+        
+        st.markdown("---")
+        
+        # Section 3: Xử Lý Giá Trị Thiếu
+        st.markdown("### 3️⃣ Xử Lý Giá Trị Thiếu")
+        
         # Show rows with missing data section (moved outside columns)
         if len(missing_data) > 0:
-            st.markdown("---")
             st.markdown("##### 📋 Xem Bản Ghi Có Dữ Liệu Thiếu")
             
             # Get rows with any missing values
@@ -419,9 +638,250 @@ def render():
                 else:
                     st.info("💡 Chưa xử lý cột nào. Chọn cột và phương pháp ở trên, sau đó bấm 'Xử Lý Ngay'.")
         
-        # Section 2: Mã Hóa Biến Phân Loại (Moved to separate section)
+        # Section 4: Xử Lý Outliers & Biến Đổi Phân Phối
         st.markdown("---")
-        st.markdown("### 2️⃣ Mã Hóa Biến Phân Loại")
+        st.markdown("### 4️⃣ Xử Lý Outliers & Biến Đổi Phân Phối")
+        
+        # Sub-section 4.1: Xử Lý Outliers
+        st.markdown("#### 4.1 Xử Lý Outliers")
+        
+        col_outlier1, col_outlier2 = st.columns([1, 1])
+        
+        with col_outlier1:
+            st.markdown("##### ⚙️ Cấu Hình Xử Lý Outliers")
+            
+            outlier_method = st.selectbox(
+                "Phương pháp:",
+                ["IQR Method", "Z-Score", "Winsorization", "Keep All"],
+                key="outlier_method",
+                help="IQR: Sử dụng Interquartile Range\nZ-Score: Dựa trên độ lệch chuẩn\nWinsorization: Thay thế outliers bằng giá trị ngưỡng"
+            )
+            
+            if outlier_method != "Keep All":
+                threshold = st.slider(
+                    "Ngưỡng:",
+                    1.0, 5.0, 1.5 if outlier_method == "IQR Method" else 3.0, 0.5,
+                    key="outlier_threshold"
+                )
+            
+            numeric_cols_for_outlier = data.select_dtypes(include=[np.number]).columns.tolist()
+            if numeric_cols_for_outlier:
+                selected_outlier_cols = st.multiselect(
+                    "Chọn các cột cần xử lý outliers:",
+                    numeric_cols_for_outlier,
+                    key="selected_outlier_cols"
+                )
+                
+                if st.button("✅ Xử Lý Outliers", key="apply_outliers", use_container_width=True, type="primary"):
+                    if selected_outlier_cols:
+                        with st.spinner(f"Đang xử lý outliers..."):
+                            show_processing_placeholder(f"Xử lý outliers bằng {outlier_method}")
+                            st.success(f"✅ Đã xử lý outliers cho {len(selected_outlier_cols)} cột!")
+                    else:
+                        st.warning("Vui lòng chọn ít nhất 1 cột")
+        
+        with col_outlier2:
+            st.markdown("##### 📊 Thống Kê Outliers")
+            
+            if numeric_cols_for_outlier:
+                # Show outlier statistics
+                outlier_stats = []
+                for col in numeric_cols_for_outlier[:5]:  # Show first 5
+                    col_data = data[col].dropna()
+                    if len(col_data) > 0:
+                        Q1 = col_data.quantile(0.25)
+                        Q3 = col_data.quantile(0.75)
+                        IQR = Q3 - Q1
+                        outliers = col_data[(col_data < Q1 - 1.5 * IQR) | (col_data > Q3 + 1.5 * IQR)]
+                        outlier_pct = len(outliers) / len(col_data) * 100
+                        
+                        outlier_stats.append({
+                            'Cột': col,
+                            'Số outliers': len(outliers),
+                            'Tỷ lệ (%)': f"{outlier_pct:.2f}"
+                        })
+                
+                if outlier_stats:
+                    st.dataframe(pd.DataFrame(outlier_stats), use_container_width=True, hide_index=True)
+        
+        # Sub-section 4.2: Biến Đổi Phân Phối
+        st.markdown("---")
+        st.markdown("#### 4.2 Biến Đổi Phân Phối")
+        
+        st.markdown("""
+        <div style="background-color: #262730; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+            <p style="margin: 0; font-size: 0.9rem;">💡 <strong>Biến đổi phân phối</strong> giúp:</p>
+            <ul style="font-size: 0.85rem; margin: 0.5rem 0 0 1rem;">
+                <li>Giảm độ lệch (skewness) của dữ liệu</li>
+                <li>Làm cho phân phối gần chuẩn hơn</li>
+                <li>Cải thiện hiệu suất mô hình</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        col_transform1, col_transform2 = st.columns([1, 1])
+        
+        with col_transform1:
+            st.markdown("##### ⚙️ Cấu Hình Biến Đổi")
+            
+            numeric_cols_for_transform = data.select_dtypes(include=[np.number]).columns.tolist()
+            
+            if numeric_cols_for_transform:
+                selected_transform_col = st.selectbox(
+                    "Chọn cột cần biến đổi:",
+                    numeric_cols_for_transform,
+                    key="transform_col",
+                    help="Chọn cột số để áp dụng biến đổi phân phối"
+                )
+                
+                # Show distribution info
+                col_data_transform = data[selected_transform_col].dropna()
+                if len(col_data_transform) > 0:
+                    skewness = col_data_transform.skew()
+                    
+                    stat_t1, stat_t2 = st.columns(2)
+                    with stat_t1:
+                        st.metric("Skewness", f"{skewness:.3f}")
+                    with stat_t2:
+                        if abs(skewness) < 0.5:
+                            st.success("✅ Gần chuẩn")
+                        elif abs(skewness) < 1.0:
+                            st.warning("⚠️ Lệch vừa")
+                        else:
+                            st.error("❌ Lệch mạnh")
+                    
+                    st.markdown("---")
+                    
+                    # Transformation method selection
+                    transform_method = st.selectbox(
+                        "Phương pháp biến đổi:",
+                        [
+                            "Log (logarithm)",
+                            "Log1p (log(1+x))",
+                            "Sqrt (square root)",
+                            "Cbrt (cube root)",
+                            "Box-Cox",
+                            "Yeo-Johnson",
+                            "Reciprocal (1/x)",
+                            "Square (x²)"
+                        ],
+                        key="transform_method",
+                        help="Chọn phép biến đổi phù hợp với phân phối dữ liệu"
+                    )
+                    
+                    # Show method description
+                    method_desc = {
+                        "Log (logarithm)": "Giảm skew dương, yêu cầu giá trị > 0",
+                        "Log1p (log(1+x))": "Như Log nhưng xử lý được giá trị 0",
+                        "Sqrt (square root)": "Giảm skew dương nhẹ hơn Log",
+                        "Cbrt (cube root)": "Giảm skew dương, xử lý được giá trị âm",
+                        "Box-Cox": "Tự động tìm λ tối ưu, yêu cầu giá trị > 0",
+                        "Yeo-Johnson": "Như Box-Cox nhưng xử lý được giá trị âm",
+                        "Reciprocal (1/x)": "Cho phân phối lệch phải mạnh",
+                        "Square (x²)": "Tăng skew (ít dùng)"
+                    }
+                    
+                    st.info(f"📝 {method_desc.get(transform_method, '')}")
+                    
+                    # Check if method is applicable
+                    can_apply = True
+                    warning_msg = ""
+                    
+                    if transform_method == "Log (logarithm)" and (col_data_transform <= 0).any():
+                        can_apply = False
+                        warning_msg = "⚠️ Log yêu cầu tất cả giá trị > 0"
+                    elif transform_method == "Box-Cox" and (col_data_transform <= 0).any():
+                        can_apply = False
+                        warning_msg = "⚠️ Box-Cox yêu cầu tất cả giá trị > 0"
+                    elif transform_method == "Reciprocal (1/x)" and (col_data_transform == 0).any():
+                        can_apply = False
+                        warning_msg = "⚠️ Reciprocal không xử lý được giá trị 0"
+                    
+                    if not can_apply:
+                        st.warning(warning_msg)
+                    
+                    if st.button("✅ Áp Dụng Biến Đổi", key="apply_transform", use_container_width=True, type="primary", disabled=not can_apply):
+                        with st.spinner(f"Đang biến đổi cột {selected_transform_col}..."):
+                            # Backup
+                            if 'transform_backup' not in st.session_state:
+                                st.session_state.transform_backup = {}
+                            st.session_state.transform_backup[selected_transform_col] = st.session_state.data[selected_transform_col].copy()
+                            
+                            # Apply transformation
+                            if transform_method == "Log (logarithm)":
+                                st.session_state.data[selected_transform_col] = np.log(st.session_state.data[selected_transform_col])
+                            elif transform_method == "Log1p (log(1+x))":
+                                st.session_state.data[selected_transform_col] = np.log1p(st.session_state.data[selected_transform_col])
+                            elif transform_method == "Sqrt (square root)":
+                                st.session_state.data[selected_transform_col] = np.sqrt(np.abs(st.session_state.data[selected_transform_col]))
+                            elif transform_method == "Cbrt (cube root)":
+                                st.session_state.data[selected_transform_col] = np.cbrt(st.session_state.data[selected_transform_col])
+                            elif transform_method == "Box-Cox":
+                                from scipy import stats
+                                st.session_state.data[selected_transform_col], _ = stats.boxcox(st.session_state.data[selected_transform_col].dropna())
+                            elif transform_method == "Yeo-Johnson":
+                                from scipy import stats
+                                st.session_state.data[selected_transform_col], _ = stats.yeojohnson(st.session_state.data[selected_transform_col].dropna())
+                            elif transform_method == "Reciprocal (1/x)":
+                                st.session_state.data[selected_transform_col] = 1 / st.session_state.data[selected_transform_col]
+                            elif transform_method == "Square (x²)":
+                                st.session_state.data[selected_transform_col] = np.square(st.session_state.data[selected_transform_col])
+                            
+                            st.success(f"✅ Đã áp dụng {transform_method} cho cột `{selected_transform_col}`!")
+                            st.rerun()
+                else:
+                    st.warning("Cột này không có dữ liệu hợp lệ")
+            else:
+                st.info("Không có cột số nào để biến đổi")
+        
+        with col_transform2:
+            st.markdown("##### 📊 Trực Quan Hóa Phân Phối")
+            
+            if numeric_cols_for_transform and 'selected_transform_col' in locals():
+                # Show distribution plot
+                col_data_viz = data[selected_transform_col].dropna()
+                
+                if len(col_data_viz) > 0:
+                    fig = go.Figure()
+                    
+                    # Histogram
+                    fig.add_trace(go.Histogram(
+                        x=col_data_viz,
+                        name='Distribution',
+                        marker_color='#667eea',
+                        opacity=0.7,
+                        nbinsx=30
+                    ))
+                    
+                    fig.update_layout(
+                        title=f"Phân phối - {selected_transform_col}",
+                        xaxis_title="Giá trị",
+                        yaxis_title="Tần suất",
+                        template="plotly_dark",
+                        height=300,
+                        showlegend=False
+                    )
+                    
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Show statistics
+                    st.markdown("##### 📈 Thống Kê")
+                    stats_df = pd.DataFrame({
+                        'Thống kê': ['Mean', 'Median', 'Std', 'Min', 'Max', 'Skewness'],
+                        'Giá trị': [
+                            f"{col_data_viz.mean():.2f}",
+                            f"{col_data_viz.median():.2f}",
+                            f"{col_data_viz.std():.2f}",
+                            f"{col_data_viz.min():.2f}",
+                            f"{col_data_viz.max():.2f}",
+                            f"{col_data_viz.skew():.3f}"
+                        ]
+                    })
+                    st.dataframe(stats_df, use_container_width=True, hide_index=True)
+        
+        # Section 5: Mã Hóa Biến Phân Loại
+        st.markdown("---")
+        st.markdown("### 5️⃣ Mã Hóa Biến Phân Loại")
         
         categorical_cols = data.select_dtypes(include=['object', 'category']).columns.tolist()
         
@@ -516,119 +976,9 @@ def render():
         else:
             st.success("✅ Không có biến phân loại cần mã hóa")
         
-        # Section 3: Chuẩn Hóa/Scale
+        # Section 6: Cân Bằng Dữ Liệu
         st.markdown("---")
-        st.markdown("### 3️⃣ Chuẩn Hóa/Scaling")
-        
-        col_scale1, col_scale2 = st.columns([1, 1])
-        
-        with col_scale1:
-            st.markdown("##### ⚙️ Cấu Hình Scaling")
-            
-            scaling_method = st.selectbox(
-                "Phương pháp:",
-                ["Standard Scaler", "Min-Max Scaler", "Robust Scaler", "No Scaling"],
-                key="scaling_method",
-                help="Standard Scaler: z-score normalization\nMin-Max: scale to [0,1]\nRobust: resistant to outliers"
-            )
-            
-            # Select columns to scale
-            numeric_cols_for_scale = data.select_dtypes(include=[np.number]).columns.tolist()
-            if numeric_cols_for_scale:
-                selected_scale_cols = st.multiselect(
-                    "Chọn các cột cần scaling:",
-                    numeric_cols_for_scale,
-                    default=numeric_cols_for_scale[:min(5, len(numeric_cols_for_scale))],
-                    key="selected_scale_cols"
-                )
-                
-                if st.button("✅ Áp Dụng Scaling", key="apply_scaling", use_container_width=True, type="primary"):
-                    if selected_scale_cols:
-                        with st.spinner(f"Đang scaling {len(selected_scale_cols)} cột..."):
-                            show_processing_placeholder(f"Scaling {len(selected_scale_cols)} cột với {scaling_method}")
-                            st.success(f"✅ Đã scaling {len(selected_scale_cols)} cột!")
-                    else:
-                        st.warning("Vui lòng chọn ít nhất 1 cột để scaling")
-            else:
-                st.info("Không có cột số nào để scaling")
-        
-        with col_scale2:
-            st.markdown("##### 📊 Thông Tin")
-            
-            st.info("""
-            **Standard Scaler**: Chuẩn hóa về mean=0, std=1
-            
-            **Min-Max Scaler**: Scale về khoảng [0, 1]
-            
-            **Robust Scaler**: Sử dụng median và IQR, tốt cho data có outliers
-            """)
-        
-        # Section 4: Xử Lý Outliers
-        st.markdown("---")
-        st.markdown("### 4️⃣ Xử Lý Outliers")
-        
-        col_outlier1, col_outlier2 = st.columns([1, 1])
-        
-        with col_outlier1:
-            st.markdown("##### ⚙️ Cấu Hình Xử Lý Outliers")
-            
-            outlier_method = st.selectbox(
-                "Phương pháp:",
-                ["IQR Method", "Z-Score", "Winsorization", "Keep All"],
-                key="outlier_method",
-                help="IQR: Sử dụng Interquartile Range\nZ-Score: Dựa trên độ lệch chuẩn\nWinsorization: Thay thế outliers bằng giá trị ngưỡng"
-            )
-            
-            if outlier_method != "Keep All":
-                threshold = st.slider(
-                    "Ngưỡng:",
-                    1.0, 5.0, 1.5 if outlier_method == "IQR Method" else 3.0, 0.5,
-                    key="outlier_threshold"
-                )
-            
-            numeric_cols_for_outlier = data.select_dtypes(include=[np.number]).columns.tolist()
-            if numeric_cols_for_outlier:
-                selected_outlier_cols = st.multiselect(
-                    "Chọn các cột cần xử lý outliers:",
-                    numeric_cols_for_outlier,
-                    key="selected_outlier_cols"
-                )
-                
-                if st.button("✅ Xử Lý Outliers", key="apply_outliers", use_container_width=True, type="primary"):
-                    if selected_outlier_cols:
-                        with st.spinner(f"Đang xử lý outliers..."):
-                            show_processing_placeholder(f"Xử lý outliers bằng {outlier_method}")
-                            st.success(f"✅ Đã xử lý outliers cho {len(selected_outlier_cols)} cột!")
-                    else:
-                        st.warning("Vui lòng chọn ít nhất 1 cột")
-        
-        with col_outlier2:
-            st.markdown("##### 📊 Thống Kê Outliers")
-            
-            if numeric_cols_for_outlier:
-                # Show outlier statistics
-                outlier_stats = []
-                for col in numeric_cols_for_outlier[:5]:  # Show first 5
-                    col_data = data[col].dropna()
-                    if len(col_data) > 0:
-                        Q1 = col_data.quantile(0.25)
-                        Q3 = col_data.quantile(0.75)
-                        IQR = Q3 - Q1
-                        outliers = col_data[(col_data < Q1 - 1.5 * IQR) | (col_data > Q3 + 1.5 * IQR)]
-                        outlier_pct = len(outliers) / len(col_data) * 100
-                        
-                        outlier_stats.append({
-                            'Cột': col,
-                            'Số outliers': len(outliers),
-                            'Tỷ lệ (%)': f"{outlier_pct:.2f}"
-                        })
-                
-                if outlier_stats:
-                    st.dataframe(pd.DataFrame(outlier_stats), use_container_width=True, hide_index=True)
-        
-        # Section 5: Cân Bằng Dữ Liệu
-        st.markdown("---")
-        st.markdown("### 5️⃣ Cân Bằng Dữ Liệu")
+        st.markdown("### 6️⃣ Cân Bằng Dữ Liệu")
         
         col_balance1, col_balance2 = st.columns([1, 1])
         
