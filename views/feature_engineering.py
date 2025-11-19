@@ -155,7 +155,7 @@ def render():
                 col1, col2, col3, col4, col5, col6 = st.columns([1.5, 1.5, 2, 1.5, 1.5, 0.8])
                 
                 with col1:
-                    st.markdown(f"**2️⃣ Loại Bỏ Cột**")
+                    st.markdown(f"**3️⃣ Loại Bỏ Cột**")
                 with col2:
                     st.markdown(f"`{col}`")
                 with col3:
@@ -182,7 +182,7 @@ def render():
                 col1, col2, col3, col4, col5, col6 = st.columns([1.5, 1.5, 2, 1.5, 1.5, 0.8])
                 
                 with col1:
-                    st.markdown(f"**2️⃣ Missing Values**")
+                    st.markdown(f"**4️⃣ Missing Values**")
                 with col2:
                     st.markdown(f"`{col}`")
                 with col3:
@@ -209,7 +209,7 @@ def render():
                     col1, col2, col3, col4, col5, col6 = st.columns([1.5, 1.5, 2, 1.5, 1.5, 0.8])
                     
                     with col1:
-                        st.markdown(f"**4️⃣ Outliers**")
+                        st.markdown(f"**5️⃣ Outliers**")
                     with col2:
                         st.markdown(f"`{col}`")
                     with col3:
@@ -252,7 +252,7 @@ def render():
                 is_applied = cfg.get('applied', False)
                 
                 with col1:
-                    st.markdown(f"**5️⃣ Encoding**")
+                    st.markdown(f"**6️⃣ Encoding**")
                 with col2:
                     st.markdown(f"`{col}`")
                 with col3:
@@ -301,7 +301,7 @@ def render():
                 is_applied = cfg.get('applied', False)
                 
                 with col1:
-                    st.markdown(f"**2️⃣ Validation**")
+                    st.markdown(f"**3️⃣ Validation**")
                 with col2:
                     st.markdown(f"`{col}`")
                 with col3:
@@ -496,8 +496,263 @@ def render():
         
         st.markdown("---")
         
-        # Section 2: Xử Lý Biến Định Danh & Giá Trị Không Hợp Lệ
-        st.markdown("### 2️⃣ Xử Lý Biến Định Danh & Giá Trị Không Hợp Lệ")
+        # Section 2: Chia Tập Train/Valid/Test
+        st.markdown("### 2️⃣ Chia Tập Train/Valid/Test")
+        
+        st.markdown("""
+        <div style="background-color: #1e3a5f; padding: 1rem; border-radius: 8px; border-left: 4px solid #3b82f6; margin-bottom: 1rem;">
+            <p style="margin: 0; font-size: 0.9rem;">💡 <strong>Quan trọng:</strong> Tất cả các bước xử lý (missing values, outliers, encoding...) sẽ được fit trên tập <strong>Train</strong>, sau đó transform cho tập <strong>Valid</strong> và <strong>Test</strong> để tránh data leakage.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        col_split1, col_split2 = st.columns([1, 1])
+        
+        with col_split1:
+            st.markdown("##### 📊 Cấu Hình Chia Tập")
+            
+            # Check if target column exists
+            if 'target_column' in st.session_state and st.session_state.target_column:
+                target_col = st.session_state.target_column
+                
+                # Show target with undo button
+                target_col1, target_col2 = st.columns([3, 1])
+                with target_col1:
+                    st.success(f"🎯 Cột target: `{target_col}`")
+                with target_col2:
+                    if st.button("↩️ Bỏ chọn", key="undo_target_selection", help="Bỏ chọn cột target", use_container_width=True):
+                        st.session_state.target_column = None
+                        st.info("✅ Đã bỏ chọn target")
+                        st.rerun()
+            else:
+                st.warning("⚠️ Chưa chọn cột target. Vui lòng chọn ở trang Upload & EDA")
+                target_col = st.selectbox(
+                    "Chọn cột target:",
+                    options=data.columns.tolist(),
+                    key="temp_target_select"
+                )
+                if st.button("💾 Lưu Target", key="save_temp_target", use_container_width=True):
+                    st.session_state.target_column = target_col
+                    st.success(f"✅ Đã lưu target: `{target_col}`")
+                    st.rerun()
+            
+            # Split configuration
+            split_col1, split_col2 = st.columns(2)
+            
+            with split_col1:
+                train_ratio = st.slider(
+                    "Tỷ lệ Train (%):",
+                    min_value=50,
+                    max_value=90,
+                    value=70,
+                    step=5,
+                    key="train_ratio",
+                    help="Phần trăm dữ liệu dùng để training"
+                )
+            
+            with split_col2:
+                valid_ratio = st.slider(
+                    "Tỷ lệ Valid (%):",
+                    min_value=5,
+                    max_value=30,
+                    value=15,
+                    step=5,
+                    key="valid_ratio",
+                    help="Phần trăm dữ liệu dùng để validation"
+                )
+            
+            test_ratio = 100 - train_ratio - valid_ratio
+            
+            if test_ratio < 0:
+                st.error("❌ Tổng tỷ lệ Train + Valid phải ≤ 100%")
+            else:
+                st.info(f"📈 Tỷ lệ chia: **Train {train_ratio}%** | **Valid {valid_ratio}%** | **Test {test_ratio}%**")
+            
+            # Stratify option for classification
+            if target_col and target_col in data.columns:
+                if data[target_col].nunique() <= 20:  # Likely classification
+                    stratify = st.checkbox(
+                        "🎯 Stratify (giữ tỷ lệ target)",
+                        value=True,
+                        help="Giữ tỷ lệ các class trong target giống nhau ở train/valid/test",
+                        key="stratify_split"
+                    )
+                else:
+                    stratify = False
+                    st.info("📊 Regression task - không cần stratify")
+            else:
+                stratify = False
+            
+            # Random seed
+            random_seed = st.number_input(
+                "Random Seed:",
+                min_value=0,
+                max_value=9999,
+                value=42,
+                key="split_seed",
+                help="Seed để tái tạo kết quả"
+            )
+            
+            # Split button
+            if st.button("✂️ Chia Tập Dữ Liệu", type="primary", use_container_width=True, key="split_data_btn"):
+                if test_ratio >= 0 and target_col and target_col in data.columns:
+                    try:
+                        from sklearn.model_selection import train_test_split
+                        
+                        with st.spinner("Đang chia tập dữ liệu..."):
+                            # Separate features and target
+                            X = data.drop(columns=[target_col])
+                            y = data[target_col]
+                            
+                            # First split: train vs (valid + test)
+                            if stratify and y.dtype in ['object', 'category'] or (y.dtype in ['int64', 'int32'] and y.nunique() <= 20):
+                                X_train, X_temp, y_train, y_temp = train_test_split(
+                                    X, y, 
+                                    test_size=(100 - train_ratio) / 100,
+                                    random_state=random_seed,
+                                    stratify=y
+                                )
+                            else:
+                                X_train, X_temp, y_train, y_temp = train_test_split(
+                                    X, y,
+                                    test_size=(100 - train_ratio) / 100,
+                                    random_state=random_seed
+                                )
+                            
+                            # Second split: valid vs test
+                            if valid_ratio > 0:
+                                valid_size_relative = valid_ratio / (100 - train_ratio)
+                                
+                                if stratify and y_temp.dtype in ['object', 'category'] or (y_temp.dtype in ['int64', 'int32'] and y_temp.nunique() <= 20):
+                                    X_valid, X_test, y_valid, y_test = train_test_split(
+                                        X_temp, y_temp,
+                                        test_size=1 - valid_size_relative,
+                                        random_state=random_seed,
+                                        stratify=y_temp
+                                    )
+                                else:
+                                    X_valid, X_test, y_valid, y_test = train_test_split(
+                                        X_temp, y_temp,
+                                        test_size=1 - valid_size_relative,
+                                        random_state=random_seed
+                                    )
+                            else:
+                                X_valid, y_valid = None, None
+                                X_test, y_test = X_temp, y_temp
+                            
+                            # Combine back
+                            train_data = pd.concat([X_train, y_train], axis=1)
+                            valid_data = pd.concat([X_valid, y_valid], axis=1) if X_valid is not None else None
+                            test_data = pd.concat([X_test, y_test], axis=1)
+                            
+                            # Save to session state
+                            st.session_state.train_data = train_data
+                            st.session_state.valid_data = valid_data
+                            st.session_state.test_data = test_data
+                            st.session_state.split_config = {
+                                'train_ratio': train_ratio,
+                                'valid_ratio': valid_ratio,
+                                'test_ratio': test_ratio,
+                                'stratify': stratify,
+                                'random_seed': random_seed,
+                                'target_column': target_col
+                            }
+                            
+                            # Update main data to train data for processing
+                            st.session_state.data = train_data.copy()
+                            
+                            st.success("✅ Đã chia tập dữ liệu thành công!")
+                            st.rerun()
+                    
+                    except Exception as e:
+                        st.error(f"❌ Lỗi khi chia dữ liệu: {str(e)}")
+                        import traceback
+                        with st.expander("Chi tiết lỗi"):
+                            st.code(traceback.format_exc())
+                else:
+                    st.warning("⚠️ Vui lòng kiểm tra cấu hình và target column")
+        
+        with col_split2:
+            st.markdown("##### 📈 Trạng Thái Chia Tập")
+            
+            if 'train_data' in st.session_state and st.session_state.train_data is not None:
+                train_size = len(st.session_state.train_data)
+                valid_size = len(st.session_state.valid_data) if st.session_state.get('valid_data') is not None else 0
+                test_size = len(st.session_state.test_data) if st.session_state.get('test_data') is not None else 0
+                total_size = train_size + valid_size + test_size
+                
+                st.markdown(f"""
+                <div style="background-color: #1a472a; padding: 1rem; border-radius: 8px; border-left: 4px solid #10b981; margin-bottom: 1rem;">
+                    <p style="margin: 0; font-weight: bold; color: #10b981;">✅ Đã Chia Tập</p>
+                    <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem;">
+                        <strong>Tổng:</strong> {total_size:,} dòng<br>
+                        <strong>Train:</strong> {train_size:,} dòng ({train_size/total_size*100:.1f}%)<br>
+                        <strong>Valid:</strong> {valid_size:,} dòng ({valid_size/total_size*100:.1f}%)<br>
+                        <strong>Test:</strong> {test_size:,} dòng ({test_size/total_size*100:.1f}%)
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Show split config
+                if 'split_config' in st.session_state:
+                    cfg = st.session_state.split_config
+                    st.markdown("**Cấu hình:**")
+                    st.json({
+                        'Target': cfg['target_column'],
+                        'Stratify': cfg['stratify'],
+                        'Random Seed': cfg['random_seed']
+                    })
+                
+                # Current working dataset
+                st.markdown("---")
+                st.info(f"📊 **Dataset hiện tại:** Train ({train_size:,} dòng)")
+                st.caption("💡 Các bước xử lý sẽ được áp dụng trên Train, sau đó transform cho Valid/Test")
+                
+                # Reset split button
+                if st.button("🔄 Reset & Merge Tất Cả", key="reset_split", type="secondary", use_container_width=True):
+                    # Merge all back
+                    all_data = pd.concat([
+                        st.session_state.train_data,
+                        st.session_state.valid_data if st.session_state.get('valid_data') is not None else pd.DataFrame(),
+                        st.session_state.test_data
+                    ], ignore_index=True)
+                    
+                    st.session_state.data = all_data
+                    st.session_state.train_data = None
+                    st.session_state.valid_data = None
+                    st.session_state.test_data = None
+                    st.session_state.split_config = None
+                    
+                    st.success("✅ Đã merge tất cả tập lại thành một!")
+                    st.rerun()
+            
+            else:
+                st.markdown("""
+                <div style="background-color: #3a3a1a; padding: 1rem; border-radius: 8px; border-left: 4px solid #fbbf24; margin-bottom: 1rem;">
+                    <p style="margin: 0; font-weight: bold; color: #fbbf24;">⏳ Chưa Chia Tập</p>
+                    <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem;">
+                        Dữ liệu hiện tại: <strong>{len(data):,}</strong> dòng<br>
+                        Hãy cấu hình và chia tập ở bên trái
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                st.markdown("""
+                <div style="background-color: #262730; padding: 1rem; border-radius: 8px; margin-top: 1rem;">
+                    <p style="margin: 0; font-size: 0.9rem;"><strong>📚 Lợi ích của việc chia tập:</strong></p>
+                    <ul style="font-size: 0.85rem; margin: 0.5rem 0 0 1rem;">
+                        <li><strong>Train:</strong> Dùng để fit model và tính statistics</li>
+                        <li><strong>Valid:</strong> Đánh giá model trong quá trình training</li>
+                        <li><strong>Test:</strong> Đánh giá cuối cùng, dữ liệu chưa thấy</li>
+                        <li><strong>Tránh overfitting:</strong> Model không thấy valid/test trong training</li>
+                        <li><strong>Tránh data leakage:</strong> Statistics từ train, không từ toàn bộ data</li>
+                    </ul>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        st.markdown("---")
+        
+        # Section 3: Xử Lý Biến Định Danh & Giá Trị Không Hợp Lệ  
+        st.markdown("### 3️⃣ Xử Lý Biến Định Danh & Giá Trị Không Hợp Lệ")
         
         col_id1, col_id2 = st.columns([1, 1])
         
@@ -802,8 +1057,8 @@ def render():
         
         st.markdown("---")
         
-        # Section 3: Xử Lý Giá Trị Thiếu
-        st.markdown("### 3️⃣ Xử Lý Giá Trị Thiếu")
+        # Section 4: Xử Lý Giá Trị Thiếu
+        st.markdown("### 4️⃣ Xử Lý Giá Trị Thiếu")
         
         # Show rows with missing data section (moved outside columns)
         if len(missing_data) > 0:
@@ -1026,12 +1281,12 @@ def render():
                 else:
                     st.info("💡 Chưa xử lý cột nào. Chọn cột và phương pháp ở trên, sau đó bấm 'Xử Lý Ngay'.")
         
-        # Section 4: Xử Lý Outliers & Biến Đổi Phân Phối
+        # Section 5: Xử Lý Outliers & Biến Đổi Phân Phối
         st.markdown("---")
-        st.markdown("### 4️⃣ Xử Lý Outliers & Biến Đổi Phân Phối")
+        st.markdown("### 5️⃣ Xử Lý Outliers & Biến Đổi Phân Phối")
         
-        # Sub-section 4.1: Xử Lý Outliers
-        st.markdown("#### 4.1 Xử Lý Outliers")
+        # Sub-section 5.1: Xử Lý Outliers
+        st.markdown("#### 5.1 Xử Lý Outliers")
         
         col_outlier1, col_outlier2 = st.columns([1, 1])
         
@@ -1451,9 +1706,9 @@ def render():
                     })
                     st.dataframe(stats_df, use_container_width=True, hide_index=True)
         
-        # Section 5: Mã Hóa Biến Phân Loại
+        # Section 6: Mã Hóa Biến Phân Loại
         st.markdown("---")
-        st.markdown("### 5️⃣ Mã Hóa Biến Phân Loại")
+        st.markdown("### 6️⃣ Mã Hóa Biến Phân Loại")
         
         categorical_cols = data.select_dtypes(include=['object', 'category']).columns.tolist()
         
@@ -1700,9 +1955,387 @@ def render():
         else:
             st.success("✅ Không có biến phân loại cần mã hóa")
         
-        # Section 6: Cân Bằng Dữ Liệu
+        # Section 7: Phân nhóm (Binning) Biến Liên Tục
         st.markdown("---")
-        st.markdown("### 6️⃣ Cân Bằng Dữ Liệu")
+        st.markdown("### 7️⃣ Phân Nhóm (Binning) Biến Liên Tục")
+        
+        st.markdown("""
+        <div style="background-color: #1e3a5f; padding: 1rem; border-radius: 8px; border-left: 4px solid #3b82f6; margin-bottom: 1rem;">
+            <p style="margin: 0; font-size: 0.9rem;">💡 <strong>Binning</strong> chuyển biến liên tục thành các nhóm rời rạc, giúp:</p>
+            <ul style="font-size: 0.85rem; margin: 0.5rem 0 0 1rem;">
+                <li>Giảm ảnh hưởng của outliers</li>
+                <li>Tạo quan hệ phi tuyến</li>
+                <li>Dễ giải thích và phân tích</li>
+                <li>Phù hợp cho decision tree models</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        numeric_cols_binning = data.select_dtypes(include=[np.number]).columns.tolist()
+        
+        if numeric_cols_binning:
+            col_bin1, col_bin2 = st.columns([1, 1])
+            
+            with col_bin1:
+                st.markdown("##### ⚙️ Cấu Hình Binning")
+                
+                selected_bin_col = st.selectbox(
+                    "Chọn biến liên tục:",
+                    numeric_cols_binning,
+                    key="binning_col_select",
+                    help="Chọn biến số để phân nhóm"
+                )
+                
+                binning_method = st.selectbox(
+                    "Phương pháp binning:",
+                    ["Equal Width (Khoảng đều)", "Equal Frequency (Tần suất đều)", "Quantile", "Custom Bins"],
+                    key="binning_method_select",
+                    help="Equal Width: chia theo khoảng giá trị bằng nhau\nEqual Frequency: mỗi nhóm có số lượng mẫu tương đương\nQuantile: chia theo phân vị\nCustom: tự định nghĩa các ngưỡng"
+                )
+                
+                if binning_method == "Custom Bins":
+                    st.info("💡 Nhập các ngưỡng phân cách, VD: 0,18,30,60,100")
+                    custom_bins = st.text_input(
+                        "Ngưỡng (phân cách bằng dấu phẩy):",
+                        value="",
+                        key="custom_bins_input",
+                        help="VD: 0,25,50,75,100"
+                    )
+                else:
+                    num_bins = st.slider(
+                        "Số nhóm:",
+                        min_value=2,
+                        max_value=10,
+                        value=5,
+                        key="num_bins_slider",
+                        help="Số lượng nhóm muốn chia"
+                    )
+                
+                # Label options
+                include_labels = st.checkbox(
+                    "Tạo nhãn cho các nhóm",
+                    value=True,
+                    key="include_bin_labels",
+                    help="Tự động tạo nhãn cho từng nhóm (VD: Low, Medium, High)"
+                )
+                
+                if include_labels:
+                    label_type = st.radio(
+                        "Kiểu nhãn:",
+                        ["Tự động (Low/Medium/High)", "Số thứ tự (1,2,3...)", "Khoảng giá trị"],
+                        key="label_type_select"
+                    )
+                
+                # New column name
+                new_col_name = st.text_input(
+                    "Tên cột mới:",
+                    value=f"{selected_bin_col}_binned",
+                    key="new_bin_col_name"
+                )
+                
+                if st.button("🔄 Thực Hiện Binning", key="apply_binning_btn", type="primary", use_container_width=True):
+                    try:
+                        with st.spinner("Đang thực hiện binning..."):
+                            bin_data = st.session_state.data[selected_bin_col].copy()
+                            
+                            # Perform binning based on method
+                            if binning_method == "Equal Width (Khoảng đều)":
+                                binned, bins = pd.cut(bin_data, bins=num_bins, retbins=True, duplicates='drop')
+                            elif binning_method == "Equal Frequency (Tần suất đều)":
+                                binned, bins = pd.qcut(bin_data, q=num_bins, retbins=True, duplicates='drop')
+                            elif binning_method == "Quantile":
+                                binned, bins = pd.qcut(bin_data, q=num_bins, retbins=True, duplicates='drop')
+                            elif binning_method == "Custom Bins":
+                                if custom_bins:
+                                    try:
+                                        bins = [float(x.strip()) for x in custom_bins.split(',')]
+                                        binned = pd.cut(bin_data, bins=bins)
+                                    except:
+                                        st.error("❌ Định dạng ngưỡng không hợp lệ!")
+                                        binned = None
+                                else:
+                                    st.warning("⚠️ Vui lòng nhập ngưỡng!")
+                                    binned = None
+                            
+                            if binned is not None:
+                                # Apply labels if needed
+                                if include_labels:
+                                    if label_type == "Tự động (Low/Medium/High)":
+                                        if len(binned.cat.categories) <= 3:
+                                            labels = ['Low', 'Medium', 'High'][:len(binned.cat.categories)]
+                                        elif len(binned.cat.categories) == 4:
+                                            labels = ['Very Low', 'Low', 'High', 'Very High']
+                                        elif len(binned.cat.categories) == 5:
+                                            labels = ['Very Low', 'Low', 'Medium', 'High', 'Very High']
+                                        else:
+                                            labels = [f'Group_{i+1}' for i in range(len(binned.cat.categories))]
+                                        binned = binned.cat.rename_categories(labels)
+                                    elif label_type == "Số thứ tự (1,2,3...)":
+                                        binned = binned.cat.codes + 1
+                                
+                                # Add to dataframe
+                                st.session_state.data[new_col_name] = binned
+                                
+                                # Save to binning config
+                                if 'binning_config' not in st.session_state:
+                                    st.session_state.binning_config = {}
+                                
+                                st.session_state.binning_config[selected_bin_col] = {
+                                    'method': binning_method,
+                                    'bins': bins.tolist() if hasattr(bins, 'tolist') else bins,
+                                    'num_bins': len(bins) - 1 if isinstance(bins, (list, np.ndarray)) else num_bins,
+                                    'new_column': new_col_name,
+                                    'labels': include_labels,
+                                    'applied': True
+                                }
+                                
+                                st.success(f"✅ Đã tạo cột mới: `{new_col_name}`")
+                                st.rerun()
+                    
+                    except Exception as e:
+                        st.error(f"❌ Lỗi khi binning: {str(e)}")
+                        import traceback
+                        with st.expander("Chi tiết lỗi"):
+                            st.code(traceback.format_exc())
+            
+            with col_bin2:
+                st.markdown("##### 📊 Phân Tích & Trực Quan")
+                
+                # Show statistics
+                if selected_bin_col in data.columns:
+                    col_data_bin = data[selected_bin_col].dropna()
+                    
+                    if len(col_data_bin) > 0:
+                        stats_col1, stats_col2, stats_col3 = st.columns(3)
+                        with stats_col1:
+                            st.metric("Min", f"{col_data_bin.min():.2f}")
+                        with stats_col2:
+                            st.metric("Mean", f"{col_data_bin.mean():.2f}")
+                        with stats_col3:
+                            st.metric("Max", f"{col_data_bin.max():.2f}")
+                        
+                        # Distribution plot
+                        fig = px.histogram(
+                            col_data_bin,
+                            nbins=30,
+                            title=f"Phân phối {selected_bin_col}",
+                            labels={'value': selected_bin_col, 'count': 'Số lượng'}
+                        )
+                        fig.update_layout(
+                            template="plotly_dark",
+                            height=300,
+                            showlegend=False,
+                            margin=dict(l=0, r=0, t=30, b=0)
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                
+                # Show binning history
+                if st.session_state.get('binning_config'):
+                    st.markdown("---")
+                    st.markdown("**📋 Lịch Sử Binning:**")
+                    
+                    for orig_col, cfg in st.session_state.binning_config.items():
+                        st.markdown(f"""
+                        <div style="background-color: #1a472a; padding: 0.5rem; border-radius: 4px; margin-bottom: 0.5rem;">
+                            <small>
+                            ✅ <strong>{orig_col}</strong> → {cfg['new_column']}<br>
+                            &nbsp;&nbsp;&nbsp;Phương pháp: {cfg['method']}<br>
+                            &nbsp;&nbsp;&nbsp;Số nhóm: {cfg['num_bins']}
+                            </small>
+                        </div>
+                        """, unsafe_allow_html=True)
+        else:
+            st.info("💡 Không có biến số để thực hiện binning")
+        
+        # Section 8: Chuẩn hóa / Scaling
+        st.markdown("---")
+        st.markdown("### 8️⃣ Chuẩn Hóa / Scaling")
+        
+        st.markdown("""
+        <div style="background-color: #1e3a5f; padding: 1rem; border-radius: 8px; border-left: 4px solid #3b82f6; margin-bottom: 1rem;">
+            <p style="margin: 0; font-size: 0.9rem;">💡 <strong>Scaling</strong> đưa các biến về cùng thang đo, quan trọng cho:</p>
+            <ul style="font-size: 0.85rem; margin: 0.5rem 0 0 1rem;">
+                <li>Linear Regression, Logistic Regression</li>
+                <li>Neural Networks, Deep Learning</li>
+                <li>K-Nearest Neighbors (KNN)</li>
+                <li>Support Vector Machines (SVM)</li>
+                <li>Gradient Descent optimization</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        numeric_cols_scale = data.select_dtypes(include=[np.number]).columns.tolist()
+        
+        if numeric_cols_scale:
+            col_scale1, col_scale2 = st.columns([1, 1])
+            
+            with col_scale1:
+                st.markdown("##### ⚙️ Cấu Hình Scaling")
+                
+                scaling_method = st.selectbox(
+                    "Phương pháp scaling:",
+                    [
+                        "StandardScaler (Z-score normalization)",
+                        "MinMaxScaler (0-1 scaling)",
+                        "RobustScaler (using IQR)",
+                        "MaxAbsScaler",
+                        "Normalizer (L2 norm)"
+                    ],
+                    key="scaling_method_select",
+                    help="StandardScaler: (x - mean) / std\nMinMaxScaler: (x - min) / (max - min)\nRobustScaler: sử dụng median và IQR, tốt cho outliers"
+                )
+                
+                st.markdown("**Chọn các cột cần scaling:**")
+                
+                # Exclude target if exists
+                target_col = st.session_state.get('target_column')
+                cols_to_scale_options = [col for col in numeric_cols_scale if col != target_col]
+                
+                if not cols_to_scale_options:
+                    cols_to_scale_options = numeric_cols_scale
+                
+                select_all_scale = st.checkbox(
+                    "Chọn tất cả biến số",
+                    value=False,
+                    key="select_all_scale_checkbox"
+                )
+                
+                if select_all_scale:
+                    selected_scale_cols = cols_to_scale_options
+                else:
+                    selected_scale_cols = st.multiselect(
+                        "Chọn cột:",
+                        cols_to_scale_options,
+                        default=[],
+                        key="scale_cols_multiselect",
+                        help="Chọn các cột số cần scaling"
+                    )
+                
+                st.info(f"📊 Đã chọn: **{len(selected_scale_cols)}** cột")
+                
+                # Additional options
+                create_new_cols = st.checkbox(
+                    "Tạo cột mới (giữ nguyên cột gốc)",
+                    value=False,
+                    key="create_new_scaled_cols",
+                    help="Nếu check: tạo cột mới với suffix '_scaled'\nNếu không: ghi đè lên cột gốc"
+                )
+                
+                if st.button("🔄 Thực Hiện Scaling", key="apply_scaling_btn", type="primary", use_container_width=True):
+                    if selected_scale_cols:
+                        try:
+                            with st.spinner(f"Đang scaling {len(selected_scale_cols)} cột..."):
+                                from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler, Normalizer
+                                
+                                # Select scaler
+                                if "StandardScaler" in scaling_method:
+                                    scaler = StandardScaler()
+                                elif "MinMaxScaler" in scaling_method:
+                                    scaler = MinMaxScaler()
+                                elif "RobustScaler" in scaling_method:
+                                    scaler = RobustScaler()
+                                elif "MaxAbsScaler" in scaling_method:
+                                    scaler = MaxAbsScaler()
+                                elif "Normalizer" in scaling_method:
+                                    scaler = Normalizer()
+                                
+                                # Fit and transform
+                                scaled_data = scaler.fit_transform(st.session_state.data[selected_scale_cols])
+                                
+                                # Create DataFrame
+                                if create_new_cols:
+                                    new_col_names = [f"{col}_scaled" for col in selected_scale_cols]
+                                    scaled_df = pd.DataFrame(scaled_data, columns=new_col_names, index=st.session_state.data.index)
+                                    st.session_state.data = pd.concat([st.session_state.data, scaled_df], axis=1)
+                                else:
+                                    st.session_state.data[selected_scale_cols] = scaled_data
+                                    new_col_names = selected_scale_cols
+                                
+                                # Save to scaling config
+                                if 'scaling_config' not in st.session_state:
+                                    st.session_state.scaling_config = {}
+                                
+                                st.session_state.scaling_config[scaling_method] = {
+                                    'method': scaling_method,
+                                    'columns': selected_scale_cols,
+                                    'new_columns': new_col_names if create_new_cols else None,
+                                    'scaler': scaler,
+                                    'applied': True
+                                }
+                                
+                                st.success(f"✅ Đã scaling {len(selected_scale_cols)} cột!")
+                                if create_new_cols:
+                                    st.info(f"📊 Đã tạo {len(new_col_names)} cột mới với suffix '_scaled'")
+                                st.rerun()
+                        
+                        except Exception as e:
+                            st.error(f"❌ Lỗi khi scaling: {str(e)}")
+                            import traceback
+                            with st.expander("Chi tiết lỗi"):
+                                st.code(traceback.format_exc())
+                    else:
+                        st.warning("⚠️ Vui lòng chọn ít nhất 1 cột để scaling")
+            
+            with col_scale2:
+                st.markdown("##### 📊 Thông Tin Scaling")
+                
+                # Show scaling info
+                st.markdown("""
+                <div style="background-color: #262730; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                    <p style="margin: 0; font-size: 0.9rem;"><strong>📚 Phương pháp Scaling:</strong></p>
+                    <ul style="font-size: 0.85rem; margin: 0.5rem 0 0 1rem;">
+                        <li><strong>StandardScaler:</strong> Mean=0, Std=1</li>
+                        <li><strong>MinMaxScaler:</strong> Scale về [0, 1]</li>
+                        <li><strong>RobustScaler:</strong> Dùng median & IQR</li>
+                        <li><strong>MaxAbsScaler:</strong> Scale về [-1, 1]</li>
+                        <li><strong>Normalizer:</strong> Normalize mỗi sample</li>
+                    </ul>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Show scaling history
+                if st.session_state.get('scaling_config'):
+                    st.markdown("**📋 Lịch Sử Scaling:**")
+                    
+                    for method_key, cfg in st.session_state.scaling_config.items():
+                        st.markdown(f"""
+                        <div style="background-color: #1a472a; padding: 0.5rem; border-radius: 4px; margin-bottom: 0.5rem;">
+                            <small>
+                            ✅ <strong>{cfg['method']}</strong><br>
+                            &nbsp;&nbsp;&nbsp;Áp dụng cho: {len(cfg['columns'])} cột<br>
+                            &nbsp;&nbsp;&nbsp;Cột: {', '.join(cfg['columns'][:3])}{'...' if len(cfg['columns']) > 3 else ''}
+                            </small>
+                        </div>
+                        """, unsafe_allow_html=True)
+                
+                # Visualize before/after if data available
+                if selected_scale_cols and len(selected_scale_cols) > 0:
+                    st.markdown("---")
+                    st.markdown("**📈 Phân phối dữ liệu:**")
+                    
+                    sample_col = selected_scale_cols[0]
+                    if sample_col in data.columns:
+                        sample_data = data[sample_col].dropna().head(1000)
+                        
+                        fig = px.histogram(
+                            sample_data,
+                            nbins=30,
+                            title=f"Trước scaling: {sample_col}",
+                            labels={'value': sample_col}
+                        )
+                        fig.update_layout(
+                            template="plotly_dark",
+                            height=250,
+                            showlegend=False,
+                            margin=dict(l=0, r=0, t=30, b=0)
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("💡 Không có biến số để scaling")
+        
+        # Section 9: Cân Bằng Dữ Liệu
+        st.markdown("---")
+        st.markdown("### 9️⃣ Cân Bằng Dữ Liệu")
         
         col_balance1, col_balance2 = st.columns([1, 1])
         
@@ -1742,76 +2375,118 @@ def render():
         st.markdown("### 📊 Phân Nhóm (Binning) Biến Liên Tục")
         
         st.markdown("""
-        <div style="background-color: #262730; padding: 1rem; border-radius: 8px; margin: 1rem 0;">
-            <p style="margin: 0;">💡 <strong>Binning</strong> giúp chuyển biến liên tục thành các nhóm rời rạc, 
-            hữu ích cho việc phân tích và giải thích mô hình.</p>
+        <div style="background-color: #1e3a5f; padding: 1rem; border-radius: 8px; border-left: 4px solid #3b82f6; margin-bottom: 1rem;">
+            <p style="margin: 0; font-size: 0.9rem;">💡 <strong>Binning</strong> chuyển biến liên tục thành các nhóm rời rạc để:</p>
+            <ul style="font-size: 0.85rem; margin: 0.5rem 0 0 1rem;">
+                <li>Giảm ảnh hưởng của outliers và noise</li>
+                <li>Tạo quan hệ phi tuyến giữa features và target</li>
+                <li>Dễ giải thích và phân tích business</li>
+                <li>Phù hợp cho decision tree và rule-based models</li>
+            </ul>
         </div>
         """, unsafe_allow_html=True)
         
-        numeric_cols = data.select_dtypes(include=[np.number]).columns.tolist()
+        numeric_cols_binning_tab = data.select_dtypes(include=[np.number]).columns.tolist()
         
-        if numeric_cols:
-            col1, col2 = st.columns([1, 2])
+        if numeric_cols_binning_tab:
+            col_bin_tab1, col_bin_tab2 = st.columns([1, 1])
             
-            with col1:
-                selected_col = st.selectbox("Chọn biến để binning:", numeric_cols, key="binning_col")
+            with col_bin_tab1:
+                st.markdown("##### ⚙️ Cấu Hình Binning")
                 
-                binning_method = st.radio(
+                selected_bin_col_tab = st.selectbox(
+                    "Chọn biến liên tục:",
+                    numeric_cols_binning_tab,
+                    key="binning_col_tab2",
+                    help="Chọn biến số để phân nhóm"
+                )
+                
+                binning_method_tab = st.selectbox(
                     "Phương pháp binning:",
-                    ["Equal Width", "Equal Frequency", "Custom"],
-                    key="binning_method"
+                    ["Equal Width (Khoảng đều)", "Equal Frequency (Tần suất đều)", "Quantile", "Custom Bins"],
+                    key="binning_method_tab2",
+                    help="Equal Width: chia theo khoảng giá trị bằng nhau\nEqual Frequency: mỗi nhóm có số lượng mẫu tương đương"
                 )
                 
-                num_bins = st.slider("Số nhóm:", 2, 10, 5, key="num_bins")
+                if binning_method_tab == "Custom Bins":
+                    st.info("💡 Nhập các ngưỡng phân cách, VD: 0,18,30,60,100")
+                    custom_bins_tab = st.text_input(
+                        "Ngưỡng (phân cách bằng dấu phẩy):",
+                        value="",
+                        key="custom_bins_tab2",
+                        help="VD: 0,25,50,75,100"
+                    )
+                else:
+                    num_bins_tab = st.slider(
+                        "Số nhóm:",
+                        min_value=2,
+                        max_value=10,
+                        value=5,
+                        key="num_bins_tab2",
+                        help="Số lượng nhóm muốn chia"
+                    )
                 
-                if st.button("🔄 Thực Hiện Binning", key="do_binning", type="primary"):
-                    show_processing_placeholder(f"Binning biến {selected_col} thành {num_bins} nhóm")
-                    st.success(f"✅ Đã tạo biến mới: {selected_col}_binned")
+                # Visualize bins before applying
+                if st.button("👁️ Xem Trước", key="preview_bins_tab2", use_container_width=True):
+                    st.info("Đang tính toán bins...")
             
-            with col2:
+            with col_bin_tab2:
+                st.markdown("##### 📊 Trực Quan Hóa Binning")
+                
                 # Visualize binning
-                st.markdown("#### 📊 Trực Quan Hóa Binning")
+                col_data_viz = data[selected_bin_col_tab].dropna()
                 
-                # Create sample bins for visualization
-                col_data = data[selected_col].dropna()
-                
-                # Mock binning visualization
-                fig = go.Figure()
-                
-                # Histogram
-                fig.add_trace(go.Histogram(
-                    x=col_data,
-                    nbinsx=num_bins,
-                    name='Distribution',
-                    marker_color='#667eea',
-                    opacity=0.7
-                ))
-                
-                # Add bin edges as vertical lines (mock)
-                bin_edges = np.linspace(col_data.min(), col_data.max(), num_bins + 1)
-                for edge in bin_edges:
-                    fig.add_vline(x=edge, line_dash="dash", line_color="red", opacity=0.5)
-                
-                fig.update_layout(
-                    title=f"Binning visualization - {selected_col}",
-                    xaxis_title=selected_col,
-                    yaxis_title="Frequency",
-                    template="plotly_dark",
-                    height=400
-                )
-                
-                st.plotly_chart(fig, use_container_width=True)
-                
-                # Bin statistics
-                st.markdown("#### 📊 Thống Kê Từng Nhóm")
-                bin_stats = pd.DataFrame({
-                    'Nhóm': [f"Bin {i+1}" for i in range(num_bins)],
-                    'Khoảng': [f"[{bin_edges[i]:.2f}, {bin_edges[i+1]:.2f})" for i in range(num_bins)],
-                    'Số mẫu': np.random.randint(50, 200, num_bins),  # Mock data
-                })
-                st.dataframe(bin_stats, use_container_width=True)
+                if len(col_data_viz) > 0:
+                    # Calculate bins based on method
+                    if binning_method_tab == "Equal Width (Khoảng đều)" or binning_method_tab == "Equal Frequency (Tần suất đều)" or binning_method_tab == "Quantile":
+                        n_bins_viz = num_bins_tab if 'num_bins_tab' in locals() else 5
+                        
+                        if binning_method_tab == "Equal Width (Khoảng đều)":
+                            _, bin_edges_viz = pd.cut(col_data_viz, bins=n_bins_viz, retbins=True, duplicates='drop')
+                        else:
+                            _, bin_edges_viz = pd.qcut(col_data_viz, q=n_bins_viz, retbins=True, duplicates='drop')
+                        
+                        # Create histogram with bin edges
+                        fig = go.Figure()
+                        
+                        fig.add_trace(go.Histogram(
+                            x=col_data_viz,
+                            nbinsx=n_bins_viz,
+                            name='Distribution',
+                            marker_color='#667eea',
+                            opacity=0.7
+                        ))
+                        
+                        # Add bin edges as vertical lines
+                        for edge in bin_edges_viz:
+                            fig.add_vline(x=edge, line_dash="dash", line_color="red", opacity=0.5)
+                        
+                        fig.update_layout(
+                            title=f"Binning Preview: {selected_bin_col_tab}",
+                            xaxis_title=selected_bin_col_tab,
+                            yaxis_title="Frequency",
+                            template="plotly_dark",
+                            height=350,
+                            margin=dict(l=0, r=0, t=40, b=0)
+                        )
+                        
+                        st.plotly_chart(fig, use_container_width=True)
+                        
+                        # Show bin statistics
+                        st.markdown("**📊 Thống Kê Từng Nhóm:**")
+                        bin_labels = pd.cut(col_data_viz, bins=bin_edges_viz, duplicates='drop')
+                        bin_counts = bin_labels.value_counts().sort_index()
+                        
+                        bin_stats_df = pd.DataFrame({
+                            'Nhóm': [f"Bin {i+1}" for i in range(len(bin_counts))],
+                            'Khoảng': [str(interval) for interval in bin_counts.index],
+                            'Số mẫu': bin_counts.values
+                        })
+                        st.dataframe(bin_stats_df, use_container_width=True, hide_index=True)
+                else:
+                    st.warning("⚠️ Không có dữ liệu hợp lệ để binning")
         else:
-            st.warning("⚠️ Không có biến số nào trong dataset")
+            st.info("💡 Không có biến số để thực hiện binning")
     
     # Tab 3: Feature Importance
     with tab3:

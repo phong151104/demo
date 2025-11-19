@@ -821,33 +821,54 @@ def render():
                                 api_key = LLMConfig.get_api_key() if is_llm_configured else None
                                 
                                 # Create prompt for preprocessing suggestions
-                                suggestions_prompt = f"""Dựa trên kết quả phân tích EDA sau đây, hãy tạo một roadmap tiền xử lý dữ liệu theo ĐÚNG 4 BƯỚC sau:
+                                suggestions_prompt = f"""Dựa trên kết quả phân tích EDA sau đây, hãy tạo một roadmap tiền xử lý dữ liệu theo ĐÚNG 8 BƯỚC sau:
 
 KẾT QUẢ PHÂN TÍCH EDA:
 {st.session_state.ai_analysis}
 
 YÊU CẦU:
-Trả về roadmap tiền xử lý theo ĐÚNG 4 BƯỚC SAU (không được thêm bớt bước):
+Trả về roadmap tiền xử lý theo ĐÚNG 8 BƯỚC SAU (không được thêm bớt bước):
 
-**Bước 1: Xử Lý Biến Định Danh & Giá Trị Không Hợp Lệ**
+**Bước 1: Chia Tập Train/Valid/Test**
+- Đề xuất tỷ lệ chia phù hợp (ví dụ: 70/15/15 hoặc 80/10/10)
+- Xác định xem có cần stratified split không (dựa vào phân phối target)
+- Giải thích lý do chọn tỷ lệ đó
+
+**Bước 2: Xử Lý Biến Định Danh & Giá Trị Không Hợp Lệ**
 - Xác định và loại bỏ các cột định danh (ID, customer_id, ...)
 - Phát hiện và xử lý các giá trị không hợp lệ (âm, ngoài phạm vi, ...)
 - Liệt kê CỤ THỂ tên cột cần xử lý
 
-**Bước 2: Xử Lý Giá Trị Thiếu**
+**Bước 3: Xử Lý Giá Trị Thiếu**
 - Xác định các cột có missing values
-- Đề xuất phương pháp xử lý CHO TỪNG CỘT (drop, imputation, ...)
+- Đề xuất phương pháp xử lý CHO TỪNG CỘT (drop, mean/median/mode imputation, forward/backward fill, ...)
 - Giải thích lý do chọn phương pháp đó
 
-**Bước 3: Xử Lý Outliers & Biến Đổi Phân Phối**
+**Bước 4: Xử Lý Outliers & Biến Đổi Phân Phối**
 - Xác định các cột có outliers nghiêm trọng
-- Đề xuất phương pháp xử lý outliers (Winsorization, IQR, Log transform, ...)
-- Đề xuất biến đổi phân phối nếu cần (Log, Box-Cox, ...)
+- Đề xuất phương pháp xử lý outliers (Winsorization, IQR, Z-score, ...)
+- Đề xuất biến đổi phân phối nếu cần (Log, Box-Cox, Yeo-Johnson, ...)
+- Giải thích lý do cho từng phương pháp
 
-**Bước 4: Mã Hóa Biến Phân Loại**
+**Bước 5: Mã Hóa Biến Phân Loại**
 - Xác định các biến phân loại cần mã hóa
-- Đề xuất phương pháp mã hóa CHO TỪNG CỘT (One-Hot, Label Encoding, Target Encoding, ...)
-- Giải thích lý do chọn phương pháp đó (dựa vào cardinality, mối quan hệ với target, ...)
+- Đề xuất phương pháp mã hóa CHO TỪNG CỘT (One-Hot, Label, Target, Ordinal, Frequency Encoding, ...)
+- Giải thích lý do chọn phương pháp đó (dựa vào cardinality, mối quan hệ với target, thứ tự, ...)
+
+**Bước 6: Phân Nhóm (Binning) Biến Liên Tục**
+- Xác định các biến liên tục có thể được binning (nếu có)
+- Đề xuất phương pháp binning (Equal Width, Equal Frequency, Quantile, Custom)
+- Đề xuất số bins phù hợp và giải thích lý do
+
+**Bước 7: Chuẩn Hóa / Scaling**
+- Xác định các biến số cần scaling
+- Đề xuất phương pháp scaling phù hợp (StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler, ...)
+- Giải thích lý do chọn phương pháp đó (dựa vào phân phối, outliers, model sẽ dùng, ...)
+
+**Bước 8: Cân Bằng Dữ Liệu**
+- Kiểm tra tỷ lệ các class trong target variable
+- Nếu mất cân bằng (imbalanced), đề xuất phương pháp xử lý (SMOTE, Undersampling, Class Weights, ...)
+- Đề xuất tỷ lệ cân bằng phù hợp
 
 FORMAT:
 - Mỗi bước phải có tiêu đề in đậm với emoji
@@ -856,10 +877,10 @@ FORMAT:
 - Ngôn ngữ: Tiếng Việt chuyên nghiệp
 
 QUAN TRỌNG: 
-- PHẢI trả về ĐÚNG 4 BƯỚC theo cấu trúc trên
+- PHẢI trả về ĐÚNG 8 BƯỚC theo cấu trúc trên
 - Mỗi bước phải CỤ THỂ, đề cập tên cột và phương pháp
 - KHÔNG thêm bước khác, KHÔNG tóm tắt chung chung
-- CHỈ trả về 4 bước, KHÔNG giải thích thêm!"""
+- CHỈ trả về 8 bước, KHÔNG giải thích thêm!"""
 
                                 # Call LLM
                                 if is_llm_configured and api_key:
@@ -893,23 +914,44 @@ QUAN TRỌNG:
                                 else:
                                     suggestions_text = """**📋 Roadmap Tiền Xử Lý Dữ Liệu:**
 
-**Bước 1: 🔍 Xử Lý Biến Định Danh & Giá Trị Không Hợp Lệ**
+**Bước 1: ✂️ Chia Tập Train/Valid/Test**
+- Đề xuất chia 70% Train, 15% Valid, 15% Test
+- Sử dụng stratified split để giữ cân bằng phân phối target
+- Đảm bảo tách dữ liệu TRƯỚC khi thực hiện bất kỳ bước xử lý nào
+
+**Bước 2: 🔍 Xử Lý Biến Định Danh & Giá Trị Không Hợp Lệ**
 - Xác định và loại bỏ các cột định danh (customer_id, ID, ...)
 - Kiểm tra và xử lý các giá trị không hợp lệ (âm, ngoài phạm vi hợp lý)
 
-**Bước 2: ❓ Xử Lý Giá Trị Thiếu**
+**Bước 3: ❓ Xử Lý Giá Trị Thiếu**
 - Xác định các cột có missing values
-- Áp dụng phương pháp phù hợp: Drop, Mean/Median Imputation, hoặc Forward Fill
+- Áp dụng phương pháp phù hợp: Drop, Mean/Median/Mode Imputation, hoặc Forward/Backward Fill
 
-**Bước 3: ⚠️ Xử Lý Outliers & Biến Đổi Phân Phối**
+**Bước 4: ⚠️ Xử Lý Outliers & Biến Đổi Phân Phối**
 - Phát hiện outliers bằng phương pháp IQR hoặc Z-score
 - Áp dụng Winsorization hoặc Log Transform cho các cột có outliers
-- Biến đổi phân phối lệch bằng Log hoặc Box-Cox nếu cần
+- Biến đổi phân phối lệch bằng Log, Box-Cox, hoặc Yeo-Johnson nếu cần
 
-**Bước 4: 🔤 Mã Hóa Biến Phân Loại**
+**Bước 5: 🔤 Mã Hóa Biến Phân Loại**
 - One-Hot Encoding cho biến có cardinality thấp (< 10 categories)
 - Label Encoding cho biến ordinal hoặc binary
-- Target Encoding cho biến có cardinality cao"""
+- Target Encoding cho biến có cardinality cao
+- Frequency Encoding cho biến có nhiều categories
+
+**Bước 6: 📊 Phân Nhóm (Binning) Biến Liên Tục**
+- Xem xét binning cho các biến liên tục phù hợp
+- Áp dụng Equal Width, Equal Frequency, hoặc Quantile binning
+- Đề xuất 3-10 bins tùy thuộc vào dữ liệu
+
+**Bước 7: ⚖️ Chuẩn Hóa / Scaling**
+- StandardScaler cho Linear models, Neural Networks
+- MinMaxScaler cho bounded range [0,1]
+- RobustScaler nếu có nhiều outliers
+
+**Bước 8: 🎯 Cân Bằng Dữ Liệu**
+- Kiểm tra tỷ lệ các class trong target
+- Áp dụng SMOTE nếu imbalanced < 40%
+- Sử dụng Class Weights hoặc Undersampling nếu cần"""
                                 
                                 # Save to session state (silently, no notification)
                                 st.session_state.preprocessing_suggestions = suggestions_text
@@ -1339,33 +1381,54 @@ QUAN TRỌNG:
                                 api_key = LLMConfig.get_api_key() if is_llm_configured else None
                                 
                                 # Create prompt for preprocessing suggestions
-                                suggestions_prompt = f"""Dựa trên kết quả phân tích EDA sau đây, hãy tạo một roadmap tiền xử lý dữ liệu theo ĐÚNG 4 BƯỚC sau:
+                                suggestions_prompt = f"""Dựa trên kết quả phân tích EDA sau đây, hãy tạo một roadmap tiền xử lý dữ liệu theo ĐÚNG 8 BƯỚC sau:
 
 KẾT QUẢ PHÂN TÍCH EDA:
 {st.session_state.ai_analysis}
 
 YÊU CẦU:
-Trả về roadmap tiền xử lý theo ĐÚNG 4 BƯỚC SAU (không được thêm bớt bước):
+Trả về roadmap tiền xử lý theo ĐÚNG 8 BƯỚC SAU (không được thêm bớt bước):
 
-**Bước 1: Xử Lý Biến Định Danh & Giá Trị Không Hợp Lệ**
+**Bước 1: Chia Tập Train/Valid/Test**
+- Đề xuất tỷ lệ chia phù hợp (ví dụ: 70/15/15 hoặc 80/10/10)
+- Xác định xem có cần stratified split không (dựa vào phân phối target)
+- Giải thích lý do chọn tỷ lệ đó
+
+**Bước 2: Xử Lý Biến Định Danh & Giá Trị Không Hợp Lệ**
 - Xác định và loại bỏ các cột định danh (ID, customer_id, ...)
 - Phát hiện và xử lý các giá trị không hợp lệ (âm, ngoài phạm vi, ...)
 - Liệt kê CỤ THỂ tên cột cần xử lý
 
-**Bước 2: Xử Lý Giá Trị Thiếu**
+**Bước 3: Xử Lý Giá Trị Thiếu**
 - Xác định các cột có missing values
-- Đề xuất phương pháp xử lý CHO TỪNG CỘT (drop, imputation, ...)
+- Đề xuất phương pháp xử lý CHO TỪNG CỘT (drop, mean/median/mode imputation, forward/backward fill, ...)
 - Giải thích lý do chọn phương pháp đó
 
-**Bước 3: Xử Lý Outliers & Biến Đổi Phân Phối**
+**Bước 4: Xử Lý Outliers & Biến Đổi Phân Phối**
 - Xác định các cột có outliers nghiêm trọng
-- Đề xuất phương pháp xử lý outliers (Winsorization, IQR, Log transform, ...)
-- Đề xuất biến đổi phân phối nếu cần (Log, Box-Cox, ...)
+- Đề xuất phương pháp xử lý outliers (Winsorization, IQR, Z-score, ...)
+- Đề xuất biến đổi phân phối nếu cần (Log, Box-Cox, Yeo-Johnson, ...)
+- Giải thích lý do cho từng phương pháp
 
-**Bước 4: Mã Hóa Biến Phân Loại**
+**Bước 5: Mã Hóa Biến Phân Loại**
 - Xác định các biến phân loại cần mã hóa
-- Đề xuất phương pháp mã hóa CHO TỪNG CỘT (One-Hot, Label Encoding, Target Encoding, ...)
-- Giải thích lý do chọn phương pháp đó (dựa vào cardinality, mối quan hệ với target, ...)
+- Đề xuất phương pháp mã hóa CHO TỪNG CỘT (One-Hot, Label, Target, Ordinal, Frequency Encoding, ...)
+- Giải thích lý do chọn phương pháp đó (dựa vào cardinality, mối quan hệ với target, thứ tự, ...)
+
+**Bước 6: Phân Nhóm (Binning) Biến Liên Tục**
+- Xác định các biến liên tục có thể được binning (nếu có)
+- Đề xuất phương pháp binning (Equal Width, Equal Frequency, Quantile, Custom)
+- Đề xuất số bins phù hợp và giải thích lý do
+
+**Bước 7: Chuẩn Hóa / Scaling**
+- Xác định các biến số cần scaling
+- Đề xuất phương pháp scaling phù hợp (StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler, ...)
+- Giải thích lý do chọn phương pháp đó (dựa vào phân phối, outliers, model sẽ dùng, ...)
+
+**Bước 8: Cân Bằng Dữ Liệu**
+- Kiểm tra tỷ lệ các class trong target variable
+- Nếu mất cân bằng (imbalanced), đề xuất phương pháp xử lý (SMOTE, Undersampling, Class Weights, ...)
+- Đề xuất tỷ lệ cân bằng phù hợp
 
 FORMAT:
 - Mỗi bước phải có tiêu đề in đậm với emoji
@@ -1374,10 +1437,10 @@ FORMAT:
 - Ngôn ngữ: Tiếng Việt chuyên nghiệp
 
 QUAN TRỌNG: 
-- PHẢI trả về ĐÚNG 4 BƯỚC theo cấu trúc trên
+- PHẢI trả về ĐÚNG 8 BƯỚC theo cấu trúc trên
 - Mỗi bước phải CỤ THỂ, đề cập tên cột và phương pháp
 - KHÔNG thêm bước khác, KHÔNG tóm tắt chung chung
-- CHỈ trả về 4 bước, KHÔNG giải thích thêm!"""
+- CHỈ trả về 8 bước, KHÔNG giải thích thêm!"""
 
                                 # Call LLM
                                 if is_llm_configured and api_key:
