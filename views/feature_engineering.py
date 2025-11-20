@@ -81,9 +81,8 @@ def render():
     st.markdown("---")
     
     # Tabs for different processing steps
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3 = st.tabs([
         "🔧 Tiền Xử Lý",
-        "📊 Binning",
         "⭐ Feature Importance",
         "✅ Chọn Biến"
     ])
@@ -101,47 +100,51 @@ def render():
             len(st.session_state.get('missing_config', {})) +
             len(st.session_state.get('outlier_config', {}).get('columns', [])) +
             len(st.session_state.get('encoding_config', {})) +
-            len(st.session_state.get('validation_config', {}))
+            len(st.session_state.get('validation_config', {})) +
+            len(st.session_state.get('binning_config', {})) +
+            len(st.session_state.get('scaling_config', {})) +
+            (1 if st.session_state.get('balance_info') else 0)
         )
         
         if total_configs > 0:
-            # Summary cards
-            status_col1, status_col2, status_col3, status_col4, status_col5 = st.columns(5)
+            # Summary cards - use 2 rows for better layout
+            st.markdown("##### 📈 Tổng Quan")
+            status_row1_col1, status_row1_col2, status_row1_col3, status_row1_col4 = st.columns(4)
+            status_row2_col1, status_row2_col2, status_row2_col3, status_row2_col4 = st.columns(4)
             
-            with status_col1:
+            # Row 1
+            with status_row1_col1:
                 removed_cols = len(st.session_state.get('removed_columns_config', {}))
-                if removed_cols > 0:
-                    st.metric("🗑️ Loại Bỏ Cột", removed_cols, delta="cột")
-                else:
-                    st.metric("🗑️ Loại Bỏ Cột", "0", delta="chưa có")
+                st.metric("🗑️ Loại Bỏ Cột", removed_cols if removed_cols > 0 else "0")
             
-            with status_col2:
+            with status_row1_col2:
                 missing_configs = len(st.session_state.get('missing_config', {}))
-                if missing_configs > 0:
-                    st.metric("📝 Missing Values", missing_configs, delta="cột")
-                else:
-                    st.metric("📝 Missing Values", "0", delta="chưa có")
+                st.metric("📝 Missing Values", missing_configs if missing_configs > 0 else "0")
             
-            with status_col3:
+            with status_row1_col3:
                 outlier_configs = len(st.session_state.get('outlier_config', {}).get('columns', []))
-                if outlier_configs > 0:
-                    st.metric("⚠️ Outliers", outlier_configs, delta="cột")
-                else:
-                    st.metric("⚠️ Outliers", "0", delta="chưa có")
+                st.metric("⚠️ Outliers", outlier_configs if outlier_configs > 0 else "0")
             
-            with status_col4:
-                encoding_configs = len(st.session_state.get('encoding_config', {}))
-                if encoding_configs > 0:
-                    st.metric("🔤 Encoding", encoding_configs, delta="cột")
-                else:
-                    st.metric("🔤 Encoding", "0", delta="chưa có")
-            
-            with status_col5:
+            with status_row1_col4:
                 validation_configs = len(st.session_state.get('validation_config', {}))
-                if validation_configs > 0:
-                    st.metric("✅ Validation", validation_configs, delta="cột")
-                else:
-                    st.metric("✅ Validation", "0", delta="chưa có")
+                st.metric("✅ Validation", validation_configs if validation_configs > 0 else "0")
+            
+            # Row 2
+            with status_row2_col1:
+                encoding_configs = len(st.session_state.get('encoding_config', {}))
+                st.metric("🔤 Encoding", encoding_configs if encoding_configs > 0 else "0")
+            
+            with status_row2_col2:
+                binning_configs = len(st.session_state.get('binning_config', {}))
+                st.metric("📊 Binning", binning_configs if binning_configs > 0 else "0")
+            
+            with status_row2_col3:
+                scaling_configs = len(st.session_state.get('scaling_config', {}))
+                st.metric("📏 Scaling", scaling_configs if scaling_configs > 0 else "0")
+            
+            with status_row2_col4:
+                balance_applied = 1 if st.session_state.get('balance_info') else 0
+                st.metric("⚖️ Balancing", "Đã áp dụng" if balance_applied else "Chưa có")
             
             # Detailed configuration table
             st.markdown("##### 📋 Chi Tiết Cấu Hình Đã Lưu")
@@ -327,6 +330,104 @@ def render():
                         if st.button("🗑️", key=f"delete_validation_{col}", help=f"Xóa cấu hình {col}"):
                             del st.session_state.validation_config[col]
                             st.success(f"✅ Đã xóa cấu hình")
+                            st.rerun()
+                
+                st.markdown("---")
+            
+            # Binning configs
+            for col, cfg in st.session_state.get('binning_config', {}).items():
+                config_count += 1
+                col1, col2, col3, col4, col5, col6 = st.columns([1.5, 1.5, 2, 1.5, 1.5, 0.8])
+                
+                is_applied = cfg.get('applied', False)
+                
+                with col1:
+                    st.markdown(f"**7️⃣ Binning**")
+                with col2:
+                    st.markdown(f"`{col}`")
+                with col3:
+                    st.markdown(f"{cfg.get('method', 'N/A')}")
+                with col4:
+                    st.markdown(f"→ `{cfg.get('new_column', 'N/A')}`")
+                with col5:
+                    if is_applied:
+                        st.markdown("✅ **Đã áp dụng**")
+                    else:
+                        st.markdown("⏳ **Chờ áp dụng**")
+                with col6:
+                    if is_applied:
+                        if st.button("🗑️", key=f"delete_binning_{col}", help=f"Xóa cột binned {cfg.get('new_column')}"):
+                            # Remove binned column from data
+                            new_col = cfg.get('new_column')
+                            if new_col and new_col in st.session_state.data.columns:
+                                st.session_state.data.drop(columns=[new_col], inplace=True)
+                            del st.session_state.binning_config[col]
+                            st.success(f"✅ Đã xóa cột `{new_col}`")
+                            st.rerun()
+                
+                st.markdown("---")
+            
+            # Scaling configs
+            for col, cfg in st.session_state.get('scaling_config', {}).items():
+                config_count += 1
+                col1, col2, col3, col4, col5, col6 = st.columns([1.5, 1.5, 2, 1.5, 1.5, 0.8])
+                
+                is_applied = cfg.get('applied', False)
+                
+                with col1:
+                    st.markdown(f"**8️⃣ Scaling**")
+                with col2:
+                    st.markdown(f"`{col}`")
+                with col3:
+                    st.markdown(f"{cfg.get('method', 'N/A')}")
+                with col4:
+                    range_str = f"[{cfg.get('feature_range', [0, 1])[0]}, {cfg.get('feature_range', [0, 1])[1]}]" if 'feature_range' in cfg else 'standard'
+                    st.markdown(f"{range_str}")
+                with col5:
+                    if is_applied:
+                        st.markdown("✅ **Đã áp dụng**")
+                    else:
+                        st.markdown("⏳ **Chờ áp dụng**")
+                with col6:
+                    if is_applied and f"scaling_{col}" in st.session_state.get('column_backups', {}):
+                        if st.button("↩️", key=f"undo_scaling_{col}", help=f"Hoàn tác scaling {col}"):
+                            # Restore column from backup
+                            backup_key = f"scaling_{col}"
+                            st.session_state.data[col] = st.session_state.column_backups[backup_key]
+                            del st.session_state.column_backups[backup_key]
+                            del st.session_state.scaling_config[col]
+                            st.success(f"✅ Đã hoàn tác scaling cho `{col}`")
+                            st.rerun()
+                
+                st.markdown("---")
+            
+            # Balancing config
+            if st.session_state.get('balance_info'):
+                config_count += 1
+                balance_info = st.session_state.balance_info
+                
+                col1, col2, col3, col4, col5, col6 = st.columns([1.5, 1.5, 2, 1.5, 1.5, 0.8])
+                
+                with col1:
+                    st.markdown(f"**9️⃣ Balancing**")
+                with col2:
+                    st.markdown(f"`Dataset`")
+                with col3:
+                    st.markdown(f"{balance_info.get('method', 'N/A')}")
+                with col4:
+                    size_change = balance_info.get('size_change', 0)
+                    change_str = f"+{size_change}" if size_change > 0 else f"{size_change}"
+                    st.markdown(f"{change_str} dòng")
+                with col5:
+                    st.markdown("✅ **Đã áp dụng**")
+                with col6:
+                    if st.button("↩️", key=f"undo_balancing", help="Hoàn tác cân bằng dữ liệu"):
+                        # Restore from backup if exists
+                        if 'data_before_balance' in st.session_state.get('column_backups', {}):
+                            st.session_state.data = st.session_state.column_backups['data_before_balance'].copy()
+                            del st.session_state.column_backups['data_before_balance']
+                            del st.session_state.balance_info
+                            st.success(f"✅ Đã hoàn tác cân bằng dữ liệu")
                             st.rerun()
                 
                 st.markdown("---")
@@ -1736,205 +1837,194 @@ def render():
             with col_enc2:
                 st.markdown("##### ⚙️ Cấu Hình Mã Hóa Từng Cột")
                 
-                # Select column to encode
-                selected_enc_col = st.selectbox(
-                    "Chọn cột để mã hóa:",
-                    categorical_cols,
-                    key="selected_enc_col"
-                )
+                # Filter out already encoded (applied) columns
+                encoded_cols = [col for col, cfg in st.session_state.get('encoding_config', {}).items() 
+                               if cfg.get('applied', False)]
+                remaining_categorical_cols = [col for col in categorical_cols if col not in encoded_cols]
                 
-                # Show column info
-                unique_count = data[selected_enc_col].nunique()
-                st.metric("Số giá trị khác nhau", unique_count)
-                
-                # Show recommendation
-                from backend.data_processing import recommend_encoding
-                recommendation = recommend_encoding(data, selected_enc_col)
-                
-                st.markdown(f"""
-                <div style="background-color: #1e3a5f; padding: 0.8rem; border-radius: 6px; border-left: 3px solid #3b82f6; margin: 0.5rem 0;">
-                    <p style="margin: 0; font-size: 0.85rem;">
-                        <strong>💡 Gợi ý:</strong> {recommendation['recommendation']}<br>
-                        <span style="font-size: 0.8rem; opacity: 0.9;">{recommendation['reason']}</span>
-                    </p>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                # Encoding method selection
-                encoding_method = st.selectbox(
-                    "Phương pháp mã hóa:",
-                    ["One-Hot Encoding", "Label Encoding", "Target Encoding", "Ordinal Encoding"],
-                    key="encoding_method"
-                )
-                
-                # Method-specific parameters
-                encoding_params = {}
-                
-                if encoding_method == "One-Hot Encoding":
-                    drop_first = st.checkbox(
-                        "Drop first dummy (tránh multicollinearity)",
-                        value=False,
-                        key="onehot_drop_first",
-                        help="Bỏ cột dummy đầu tiên để tránh hiện tượng đa cộng tuyến"
+                if not remaining_categorical_cols:
+                    st.success("✅ Đã mã hóa tất cả các biến phân loại!")
+                    st.info(f"💡 Đã mã hóa: {', '.join(encoded_cols)}")
+                else:
+                    # Select column to encode (only show remaining)
+                    selected_enc_col = st.selectbox(
+                        "Chọn cột để mã hóa:",
+                        remaining_categorical_cols,
+                        key="selected_enc_col"
                     )
-                    encoding_params['drop_first'] = drop_first
-                
-                elif encoding_method == "Target Encoding":
-                    st.markdown("**Cấu hình Target Encoding:**")
                     
-                    # Find target column
-                    potential_targets = [col for col in data.columns 
-                                       if 'target' in col.lower() or 'default' in col.lower() 
-                                       or 'label' in col.lower() or 'churn' in col.lower()]
+                    # Show column info
+                    unique_count = data[selected_enc_col].nunique()
+                    st.metric("Số giá trị khác nhau", unique_count)
                     
-                    numeric_cols_for_target = data.select_dtypes(include=[np.number]).columns.tolist()
+                    # Show recommendation
+                    from backend.data_processing import recommend_encoding
+                    recommendation = recommend_encoding(data, selected_enc_col)
                     
-                    if potential_targets:
-                        default_target = potential_targets[0]
-                    elif numeric_cols_for_target:
-                        default_target = numeric_cols_for_target[-1]
-                    else:
-                        default_target = None
+                    st.markdown(f"""
+                    <div style="background-color: #1e3a5f; padding: 0.8rem; border-radius: 6px; border-left: 3px solid #3b82f6; margin: 0.5rem 0;">
+                        <p style="margin: 0; font-size: 0.85rem;">
+                            <strong>💡 Gợi ý:</strong> {recommendation['recommendation']}<br>
+                            <span style="font-size: 0.8rem; opacity: 0.9;">{recommendation['reason']}</span>
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
                     
-                    if default_target and numeric_cols_for_target:
-                        target_col = st.selectbox(
-                            "Chọn cột target:",
-                            numeric_cols_for_target,
-                            index=numeric_cols_for_target.index(default_target) if default_target in numeric_cols_for_target else 0,
-                            key="target_encoding_target",
-                            help="Cột target để tính mean encoding"
+                    # Encoding method selection
+                    encoding_method = st.selectbox(
+                        "Phương pháp mã hóa:",
+                        ["One-Hot Encoding", "Label Encoding", "Target Encoding", "Ordinal Encoding"],
+                        key="encoding_method"
+                    )
+                    
+                    # Method-specific parameters
+                    encoding_params = {}
+                    
+                    if encoding_method == "One-Hot Encoding":
+                        drop_first = st.checkbox(
+                            "Drop first dummy (tránh multicollinearity)",
+                            value=False,
+                            key="onehot_drop_first",
+                            help="Bỏ cột dummy đầu tiên để tránh hiện tượng đa cộng tuyến"
                         )
+                        encoding_params['drop_first'] = drop_first
+                    
+                    elif encoding_method == "Target Encoding":
+                        st.markdown("**Cấu hình Target Encoding:**")
                         
-                        smoothing = st.slider(
-                            "Smoothing (tránh overfitting):",
-                            min_value=0.0,
-                            max_value=10.0,
-                            value=1.0,
-                            step=0.5,
-                            key="target_encoding_smoothing",
-                            help="Giá trị cao hơn = ít overfitting hơn"
-                        )
+                        # Find target column
+                        potential_targets = [col for col in data.columns 
+                                           if 'target' in col.lower() or 'default' in col.lower() 
+                                           or 'label' in col.lower() or 'churn' in col.lower()]
                         
-                        encoding_params['target_column'] = target_col
-                        encoding_params['smoothing'] = smoothing
-                    else:
-                        st.warning("⚠️ Không tìm thấy cột target. Vui lòng chọn phương pháp khác.")
-                
-                elif encoding_method == "Ordinal Encoding":
-                    st.markdown("**Thứ tự các categories:**")
-                    st.info("💡 Sắp xếp theo thứ tự có ý nghĩa (thấp → cao)")
+                        numeric_cols_for_target = data.select_dtypes(include=[np.number]).columns.tolist()
+                        
+                        if potential_targets:
+                            default_target = potential_targets[0]
+                        elif numeric_cols_for_target:
+                            default_target = numeric_cols_for_target[-1]
+                        else:
+                            default_target = None
+                        
+                        if default_target and numeric_cols_for_target:
+                            target_col = st.selectbox(
+                                "Chọn cột target:",
+                                numeric_cols_for_target,
+                                index=numeric_cols_for_target.index(default_target) if default_target in numeric_cols_for_target else 0,
+                                key="target_encoding_target",
+                                help="Cột target để tính mean encoding"
+                            )
+                            
+                            smoothing = st.slider(
+                                "Smoothing (tránh overfitting):",
+                                min_value=0.0,
+                                max_value=10.0,
+                                value=1.0,
+                                step=0.5,
+                                key="target_encoding_smoothing",
+                                help="Giá trị cao hơn = ít overfitting hơn"
+                            )
+                            
+                            encoding_params['target_column'] = target_col
+                            encoding_params['smoothing'] = smoothing
+                        else:
+                            st.warning("⚠️ Không tìm thấy cột target. Vui lòng chọn phương pháp khác.")
+                    
+                    elif encoding_method == "Ordinal Encoding":
+                        st.markdown("**Thứ tự các categories:**")
+                        st.info("💡 Sắp xếp theo thứ tự có ý nghĩa (thấp → cao)")
                 
                 # Initialize encoding config
                 if 'encoding_config' not in st.session_state:
                     st.session_state.encoding_config = {}
                 
-                # Add configuration button
-                enc_btn_col1, enc_btn_col2 = st.columns(2)
-                with enc_btn_col1:
-                    if st.button("➕ Thêm Cấu Hình", key="add_enc_config", use_container_width=True):
-                        st.session_state.encoding_config[selected_enc_col] = {
-                            'method': encoding_method,
-                            'unique_count': unique_count,
-                            'params': encoding_params
-                        }
-                        st.success(f"✅ Đã thêm cấu hình cho `{selected_enc_col}`")
-                        st.rerun()
-                
-                with enc_btn_col2:
-                    if selected_enc_col in st.session_state.encoding_config:
-                        if st.button("�️ Xóa", key="remove_enc_config", use_container_width=True):
-                            del st.session_state.encoding_config[selected_enc_col]
-                            st.success(f"✅ Đã xóa cấu hình")
+                # Add and apply immediately
+                if st.button("➕ Thêm Cấu Hình", key="add_enc_config", use_container_width=True, type="primary"):
+                    try:
+                        with st.spinner(f"Đang mã hóa `{selected_enc_col}`..."):
+                            from backend.data_processing import encode_categorical
+                            
+                            # Backup
+                            if 'column_backups' not in st.session_state:
+                                st.session_state.column_backups = {}
+                            backup_key = f"encoding_{selected_enc_col}"
+                            st.session_state.column_backups[backup_key] = st.session_state.data[selected_enc_col].copy()
+                            
+                            # Apply encoding
+                            encoded_data, encoding_info = encode_categorical(
+                                data=st.session_state.data,
+                                method=encoding_method,
+                                columns=[selected_enc_col],
+                                **encoding_params
+                            )
+                            
+                            # Save
+                            st.session_state.data = encoded_data
+                            st.session_state.encoding_config[selected_enc_col] = {
+                                'method': encoding_method,
+                                'unique_count': unique_count,
+                                'params': encoding_params,
+                                'applied': True
+                            }
+                            
+                            if 'encoding_applied_info' not in st.session_state:
+                                st.session_state.encoding_applied_info = {}
+                            st.session_state.encoding_applied_info.update(encoding_info)
+                            
+                            st.success(f"✅ Đã mã hóa `{selected_enc_col}`!")
+                            if encoding_method == "One-Hot Encoding" and selected_enc_col in encoding_info:
+                                st.info(f"📊 Đã tạo {encoding_info[selected_enc_col]['n_new_columns']} cột mới")
+                            
                             st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Lỗi: {str(e)}")
+                        import traceback
+                        with st.expander("Chi tiết"):
+                            st.code(traceback.format_exc())
             
             # Show current encoding configurations
             if st.session_state.encoding_config:
                 st.markdown("---")
                 st.markdown("##### 📝 Cấu Hình Mã Hóa Hiện Tại")
                 
-                enc_config_df = pd.DataFrame([
-                    {
-                        'Cột': col,
-                        'Phương pháp': cfg['method'],
-                        'Số giá trị': cfg['unique_count']
-                    }
-                    for col, cfg in st.session_state.encoding_config.items()
-                ])
+                # Display each configuration with undo button
+                for col, cfg in st.session_state.encoding_config.items():
+                    col1, col2, col3 = st.columns([2, 2, 1])
+                    
+                    with col1:
+                        st.text(f"📌 {col}")
+                    with col2:
+                        st.text(f"{cfg['method']} (Số giá trị: {cfg['unique_count']})")
+                    with col3:
+                        if cfg.get('applied', False):
+                            # Undo button for applied encoding
+                            if st.button("↩️ Undo", key=f"undo_enc_{col}", use_container_width=True):
+                                # Restore from backup
+                                backup_key = f"encoding_{col}"
+                                if backup_key in st.session_state.get('column_backups', {}):
+                                    st.session_state.data[col] = st.session_state.column_backups[backup_key]
+                                    del st.session_state.column_backups[backup_key]
+                                    
+                                    # Remove encoded columns if One-Hot
+                                    if col in st.session_state.get('encoding_applied_info', {}):
+                                        enc_info = st.session_state.encoding_applied_info[col]
+                                        if 'new_columns' in enc_info:
+                                            for new_col in enc_info['new_columns']:
+                                                if new_col in st.session_state.data.columns:
+                                                    st.session_state.data.drop(columns=[new_col], inplace=True)
+                                        del st.session_state.encoding_applied_info[col]
+                                    
+                                    del st.session_state.encoding_config[col]
+                                    st.success(f"✅ Đã hoàn tác mã hóa `{col}`")
+                                    st.rerun()
+                        else:
+                            # Delete button for pending config
+                            if st.button("🗑️", key=f"del_enc_{col}", use_container_width=True):
+                                del st.session_state.encoding_config[col]
+                                st.success(f"✅ Đã xóa cấu hình")
+                                st.rerun()
                 
-                st.dataframe(enc_config_df, use_container_width=True, hide_index=True)
-                
-                # Apply all encoding configurations
-                if st.button("✅ Áp Dụng Tất Cả Mã Hóa", type="primary", use_container_width=True, key="apply_all_encoding"):
-                    with st.spinner("Đang mã hóa các biến phân loại..."):
-                        try:
-                            # Import backend encoder
-                            from backend.data_processing import encode_categorical
-                            
-                            # Backup columns before encoding
-                            if 'column_backups' not in st.session_state:
-                                st.session_state.column_backups = {}
-                            
-                            for col in st.session_state.encoding_config.keys():
-                                if col in st.session_state.data.columns:
-                                    backup_key = f"encoding_{col}"
-                                    st.session_state.column_backups[backup_key] = st.session_state.data[col].copy()
-                            
-                            encoded_data = st.session_state.data.copy()
-                            all_encoding_info = {}
-                            total_new_cols = 0
-                            
-                            # Apply each encoding configuration
-                            for col, cfg in st.session_state.encoding_config.items():
-                                method = cfg['method']
-                                params = cfg.get('params', {})
-                                
-                                # Apply encoding for this column
-                                encoded_data, encoding_info = encode_categorical(
-                                    data=encoded_data,
-                                    method=method,
-                                    columns=[col],
-                                    **params
-                                )
-                                
-                                # Merge encoding info
-                                all_encoding_info.update(encoding_info)
-                                
-                                # Count new columns (for One-Hot)
-                                if 'new_columns' in encoding_info.get(col, {}):
-                                    total_new_cols += encoding_info[col]['n_new_columns']
-                            
-                            # Save encoded data
-                            st.session_state.data = encoded_data
-                            
-                            # Save encoding info to session
-                            if 'encoding_applied_info' not in st.session_state:
-                                st.session_state.encoding_applied_info = {}
-                            st.session_state.encoding_applied_info.update(all_encoding_info)
-                            
-                            # Success message
-                            st.success(f"✅ Đã mã hóa {len(st.session_state.encoding_config)} biến!")
-                            
-                            # Show summary
-                            summary_items = []
-                            for col, info in all_encoding_info.items():
-                                if info['method'] == 'One-Hot Encoding':
-                                    summary_items.append(f"- `{col}` → {info['n_new_columns']} cột mới")
-                                else:
-                                    summary_items.append(f"- `{col}` → {info['method']}")
-                            
-                            st.info("📊 **Kết quả mã hóa:**\n" + "\n".join(summary_items))
-                            
-                            # Mark configs as applied instead of clearing
-                            for col in st.session_state.encoding_config:
-                                st.session_state.encoding_config[col]['applied'] = True
-                            
-                            st.rerun()
-                            
-                        except Exception as e:
-                            st.error(f"❌ Lỗi khi mã hóa: {str(e)}")
-                            import traceback
-                            with st.expander("Chi tiết lỗi"):
-                                st.code(traceback.format_exc())
+                st.markdown("---")
                 
                 # Show applied encoding info if exists
                 if st.session_state.get('encoding_applied_info'):
@@ -2036,45 +2126,62 @@ def render():
                 if st.button("🔄 Thực Hiện Binning", key="apply_binning_btn", type="primary", use_container_width=True):
                     try:
                         with st.spinner("Đang thực hiện binning..."):
+                            # Get data and remove NaN values for binning
                             bin_data = st.session_state.data[selected_bin_col].copy()
                             
-                            # Perform binning based on method
-                            if binning_method == "Equal Width (Khoảng đều)":
-                                binned, bins = pd.cut(bin_data, bins=num_bins, retbins=True, duplicates='drop')
-                            elif binning_method == "Equal Frequency (Tần suất đều)":
-                                binned, bins = pd.qcut(bin_data, q=num_bins, retbins=True, duplicates='drop')
-                            elif binning_method == "Quantile":
-                                binned, bins = pd.qcut(bin_data, q=num_bins, retbins=True, duplicates='drop')
-                            elif binning_method == "Custom Bins":
-                                if custom_bins:
-                                    try:
-                                        bins = [float(x.strip()) for x in custom_bins.split(',')]
-                                        binned = pd.cut(bin_data, bins=bins)
-                                    except:
-                                        st.error("❌ Định dạng ngưỡng không hợp lệ!")
+                            # Check if data has enough non-null values
+                            valid_data = bin_data.dropna()
+                            if len(valid_data) < num_bins:
+                                st.error(f"❌ Không đủ dữ liệu hợp lệ để chia thành {num_bins} nhóm. Chỉ có {len(valid_data)} giá trị.")
+                                binned = None
+                            else:
+                                # Perform binning based on method
+                                if binning_method == "Equal Width (Khoảng đều)":
+                                    binned, bins = pd.cut(bin_data, bins=num_bins, retbins=True)
+                                elif binning_method == "Equal Frequency (Tần suất đều)":
+                                    binned, bins = pd.qcut(bin_data, q=num_bins, retbins=True, duplicates='drop')
+                                elif binning_method == "Quantile":
+                                    binned, bins = pd.qcut(bin_data, q=num_bins, retbins=True, duplicates='drop')
+                                elif binning_method == "Custom Bins":
+                                    if custom_bins:
+                                        try:
+                                            bins = [float(x.strip()) for x in custom_bins.split(',')]
+                                            binned, returned_bins = pd.cut(bin_data, bins=bins, retbins=True)
+                                            bins = returned_bins
+                                        except Exception as e:
+                                            st.error(f"❌ Định dạng ngưỡng không hợp lệ: {str(e)}")
+                                            binned = None
+                                    else:
+                                        st.warning("⚠️ Vui lòng nhập ngưỡng!")
                                         binned = None
-                                else:
-                                    st.warning("⚠️ Vui lòng nhập ngưỡng!")
-                                    binned = None
                             
                             if binned is not None:
                                 # Apply labels if needed
                                 if include_labels:
                                     if label_type == "Tự động (Low/Medium/High)":
-                                        if len(binned.cat.categories) <= 3:
-                                            labels = ['Low', 'Medium', 'High'][:len(binned.cat.categories)]
-                                        elif len(binned.cat.categories) == 4:
+                                        num_categories = len(binned.cat.categories)
+                                        if num_categories <= 3:
+                                            labels = ['Low', 'Medium', 'High'][:num_categories]
+                                        elif num_categories == 4:
                                             labels = ['Very Low', 'Low', 'High', 'Very High']
-                                        elif len(binned.cat.categories) == 5:
+                                        elif num_categories == 5:
                                             labels = ['Very Low', 'Low', 'Medium', 'High', 'Very High']
                                         else:
-                                            labels = [f'Group_{i+1}' for i in range(len(binned.cat.categories))]
+                                            labels = [f'Group_{i+1}' for i in range(num_categories)]
                                         binned = binned.cat.rename_categories(labels)
                                     elif label_type == "Số thứ tự (1,2,3...)":
-                                        binned = binned.cat.codes + 1
+                                        # Convert to numeric codes, handling NaN properly
+                                        binned_codes = binned.cat.codes.copy()
+                                        binned_codes[binned_codes >= 0] = binned_codes[binned_codes >= 0] + 1
+                                        binned = pd.Series(binned_codes, index=bin_data.index, dtype='Int64')
                                 
-                                # Add to dataframe
-                                st.session_state.data[new_col_name] = binned
+                                # Add to dataframe - use proper assignment to avoid putmask error
+                                if isinstance(binned, pd.Categorical):
+                                    # Convert categorical to string safely
+                                    st.session_state.data.loc[:, new_col_name] = binned.astype(str)
+                                else:
+                                    # For numeric series
+                                    st.session_state.data.loc[:, new_col_name] = binned
                                 
                                 # Save to binning config
                                 if 'binning_config' not in st.session_state:
@@ -2115,6 +2222,7 @@ def render():
                             st.metric("Max", f"{col_data_bin.max():.2f}")
                         
                         # Distribution plot
+                        import plotly.express as px
                         fig = px.histogram(
                             col_data_bin,
                             nbins=30,
@@ -2242,26 +2350,41 @@ def render():
                                 # Fit and transform
                                 scaled_data = scaler.fit_transform(st.session_state.data[selected_scale_cols])
                                 
+                                # Initialize configs if not exists
+                                if 'scaling_config' not in st.session_state:
+                                    st.session_state.scaling_config = {}
+                                if 'column_backups' not in st.session_state:
+                                    st.session_state.column_backups = {}
+                                
+                                # Backup columns before scaling
+                                for col in selected_scale_cols:
+                                    backup_key = f"scaling_{col}"
+                                    st.session_state.column_backups[backup_key] = st.session_state.data[col].copy()
+                                
                                 # Create DataFrame
                                 if create_new_cols:
                                     new_col_names = [f"{col}_scaled" for col in selected_scale_cols]
                                     scaled_df = pd.DataFrame(scaled_data, columns=new_col_names, index=st.session_state.data.index)
                                     st.session_state.data = pd.concat([st.session_state.data, scaled_df], axis=1)
+                                    
+                                    # Save config for each new column
+                                    for orig_col, new_col in zip(selected_scale_cols, new_col_names):
+                                        st.session_state.scaling_config[new_col] = {
+                                            'method': scaling_method,
+                                            'original_column': orig_col,
+                                            'new_column': True,
+                                            'applied': True
+                                        }
                                 else:
                                     st.session_state.data[selected_scale_cols] = scaled_data
-                                    new_col_names = selected_scale_cols
-                                
-                                # Save to scaling config
-                                if 'scaling_config' not in st.session_state:
-                                    st.session_state.scaling_config = {}
-                                
-                                st.session_state.scaling_config[scaling_method] = {
-                                    'method': scaling_method,
-                                    'columns': selected_scale_cols,
-                                    'new_columns': new_col_names if create_new_cols else None,
-                                    'scaler': scaler,
-                                    'applied': True
-                                }
+                                    
+                                    # Save config for each scaled column
+                                    for col in selected_scale_cols:
+                                        st.session_state.scaling_config[col] = {
+                                            'method': scaling_method,
+                                            'new_column': False,
+                                            'applied': True
+                                        }
                                 
                                 st.success(f"✅ Đã scaling {len(selected_scale_cols)} cột!")
                                 if create_new_cols:
@@ -2342,6 +2465,22 @@ def render():
         with col_balance1:
             st.markdown("##### ⚙️ Cấu Hình Balancing")
             
+            # Detect target column
+            target_col_balance = st.session_state.get('target_column')
+            
+            if not target_col_balance:
+                st.warning("⚠️ Chưa chọn cột target. Vui lòng chọn target ở phần Chia Tập Train/Valid/Test.")
+                
+                # Allow manual selection
+                all_cols = data.columns.tolist()
+                target_col_balance = st.selectbox(
+                    "Chọn target column:",
+                    all_cols,
+                    key="balance_target_select"
+                )
+            else:
+                st.success(f"🎯 Target column: `{target_col_balance}`")
+            
             balance_method = st.selectbox(
                 "Phương pháp:",
                 ["SMOTE", "Random Over-sampling", "Random Under-sampling", "No Balancing"],
@@ -2349,216 +2488,325 @@ def render():
                 help="SMOTE: Synthetic Minority Over-sampling\nOver-sampling: Nhân bản class thiểu số\nUnder-sampling: Giảm class đa số"
             )
             
+            # Sampling strategy
+            sampling_strategy = st.selectbox(
+                "Chiến lược sampling:",
+                ["auto", "minority", "not majority", "all"],
+                key="sampling_strategy",
+                help="auto: cân bằng về class đa số\nminority: chỉ oversample class thiểu số\nnot majority: oversample tất cả trừ class đa số"
+            )
+            
             if st.button("✅ Cân Bằng Dữ Liệu", key="apply_balance", use_container_width=True, type="primary"):
-                with st.spinner("Đang cân bằng dữ liệu..."):
-                    show_processing_placeholder(f"Cân bằng dữ liệu bằng {balance_method}")
-                    st.success("✅ Đã cân bằng dữ liệu!")
+                if target_col_balance and target_col_balance in data.columns:
+                    try:
+                        with st.spinner(f"Đang cân bằng dữ liệu bằng {balance_method}..."):
+                            # Import backend
+                            from backend.data_processing.balancer import balance_data
+                            
+                            # Backup data before balancing
+                            if 'column_backups' not in st.session_state:
+                                st.session_state.column_backups = {}
+                            st.session_state.column_backups['data_before_balance'] = st.session_state.data.copy()
+                            
+                            # Apply balancing
+                            balanced_data, balance_info = balance_data(
+                                data=st.session_state.data,
+                                target_column=target_col_balance,
+                                method=balance_method,
+                                random_state=42,
+                                sampling_strategy=sampling_strategy
+                            )
+                            
+                            # Update session state
+                            st.session_state.data = balanced_data
+                            st.session_state.balance_info = balance_info
+                            
+                            # Show results
+                            st.success(f"✅ {balance_info['message']}")
+                            
+                            # Show size change
+                            if balance_info.get('size_change', 0) != 0:
+                                size_change = balance_info['size_change']
+                                if size_change > 0:
+                                    st.info(f"📈 Tăng {size_change} dòng (từ {balance_info['original_size']} → {balance_info['balanced_size']})")
+                                else:
+                                    st.info(f"📉 Giảm {abs(size_change)} dòng (từ {balance_info['original_size']} → {balance_info['balanced_size']})")
+                            
+                            st.rerun()
+                            
+                    except ImportError:
+                        st.error("❌ Thiếu thư viện imbalanced-learn. Cài đặt bằng: pip install imbalanced-learn")
+                    except Exception as e:
+                        st.error(f"❌ Lỗi khi cân bằng dữ liệu: {str(e)}")
+                        import traceback
+                        with st.expander("Chi tiết lỗi"):
+                            st.code(traceback.format_exc())
+                else:
+                    st.warning("⚠️ Vui lòng chọn target column hợp lệ")
         
         with col_balance2:
             st.markdown("##### 📊 Phân Bổ Class")
             
-            # Try to detect target column
-            potential_targets = [col for col in data.columns if 'target' in col.lower() or 'default' in col.lower() or 'label' in col.lower()]
+            # Get target column
+            target_col_viz = st.session_state.get('target_column')
             
-            if potential_targets:
-                target_col = potential_targets[0]
-                class_dist = data[target_col].value_counts()
+            if not target_col_viz:
+                # Try to auto-detect
+                potential_targets = [col for col in data.columns if 'target' in col.lower() or 'default' in col.lower() or 'label' in col.lower()]
+                if potential_targets:
+                    target_col_viz = potential_targets[0]
+            
+            if target_col_viz and target_col_viz in data.columns:
+                # Get class distribution
+                from backend.data_processing.balancer import get_class_distribution, check_imbalance
                 
-                st.metric("Target column", target_col)
-                for cls, count in class_dist.items():
-                    st.text(f"Class {cls}: {count} ({count/len(data)*100:.1f}%)")
+                try:
+                    dist_info = get_class_distribution(data, target_col_viz)
+                    imbalance_check = check_imbalance(data, target_col_viz)
+                    
+                    # Display metrics
+                    st.metric("Target column", target_col_viz)
+                    
+                    col_m1, col_m2 = st.columns(2)
+                    with col_m1:
+                        st.metric("Số classes", dist_info['n_classes'])
+                    with col_m2:
+                        st.metric("Tỷ lệ mất cân bằng", f"{dist_info['imbalance_ratio']:.2f}")
+                    
+                    # Show distribution
+                    st.markdown("**📋 Phân bổ từng class:**")
+                    for cls, count in dist_info['counts'].items():
+                        pct = dist_info['percentages'][cls]
+                        st.text(f"Class {cls}: {count:,} ({pct:.1f}%)")
+                    
+                    # Show imbalance warning
+                    if imbalance_check['is_imbalanced']:
+                        st.warning(f"⚠️ Dataset mất cân bằng! Tỷ lệ: {imbalance_check['imbalance_ratio']:.2f}")
+                        st.info(f"💡 **Gợi ý:** {imbalance_check['recommendation']}")
+                    else:
+                        st.success("✅ Dataset tương đối cân bằng")
+                    
+                    # Show balance history if exists
+                    if st.session_state.get('balance_info'):
+                        st.markdown("---")
+                        st.markdown("**📊 Lịch Sử Cân Bằng:**")
+                        balance_info = st.session_state.balance_info
+                        
+                        st.markdown(f"""
+                        <div style="background-color: #1a472a; padding: 0.8rem; border-radius: 6px;">
+                            <small>
+                            ✅ Phương pháp: <strong>{balance_info['method']}</strong><br>
+                            📏 Kích thước: {balance_info['original_size']:,} → {balance_info['balanced_size']:,}<br>
+                            📊 Phân bổ mới:
+                            </small>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        for cls, count in balance_info['balanced_distribution'].items():
+                            pct = (count / balance_info['balanced_size']) * 100
+                            st.text(f"  Class {cls}: {count:,} ({pct:.1f}%)")
+                        
+                except Exception as e:
+                    st.error(f"Lỗi khi phân tích phân bổ: {str(e)}")
             else:
-                st.info("Chưa xác định được target column. Vui lòng chọn target ở tab 'Chọn Biến'.")
+                st.info("💡 Chưa xác định được target column. Vui lòng chọn target ở phần cấu hình bên trái.")
     
     # Tab 2: Binning
-    with tab2:
-        st.markdown("### 📊 Phân Nhóm (Binning) Biến Liên Tục")
-        
-        st.markdown("""
-        <div style="background-color: #1e3a5f; padding: 1rem; border-radius: 8px; border-left: 4px solid #3b82f6; margin-bottom: 1rem;">
-            <p style="margin: 0; font-size: 0.9rem;">💡 <strong>Binning</strong> chuyển biến liên tục thành các nhóm rời rạc để:</p>
-            <ul style="font-size: 0.85rem; margin: 0.5rem 0 0 1rem;">
-                <li>Giảm ảnh hưởng của outliers và noise</li>
-                <li>Tạo quan hệ phi tuyến giữa features và target</li>
-                <li>Dễ giải thích và phân tích business</li>
-                <li>Phù hợp cho decision tree và rule-based models</li>
-            </ul>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        numeric_cols_binning_tab = data.select_dtypes(include=[np.number]).columns.tolist()
-        
-        if numeric_cols_binning_tab:
-            col_bin_tab1, col_bin_tab2 = st.columns([1, 1])
-            
-            with col_bin_tab1:
-                st.markdown("##### ⚙️ Cấu Hình Binning")
-                
-                selected_bin_col_tab = st.selectbox(
-                    "Chọn biến liên tục:",
-                    numeric_cols_binning_tab,
-                    key="binning_col_tab2",
-                    help="Chọn biến số để phân nhóm"
-                )
-                
-                binning_method_tab = st.selectbox(
-                    "Phương pháp binning:",
-                    ["Equal Width (Khoảng đều)", "Equal Frequency (Tần suất đều)", "Quantile", "Custom Bins"],
-                    key="binning_method_tab2",
-                    help="Equal Width: chia theo khoảng giá trị bằng nhau\nEqual Frequency: mỗi nhóm có số lượng mẫu tương đương"
-                )
-                
-                if binning_method_tab == "Custom Bins":
-                    st.info("💡 Nhập các ngưỡng phân cách, VD: 0,18,30,60,100")
-                    custom_bins_tab = st.text_input(
-                        "Ngưỡng (phân cách bằng dấu phẩy):",
-                        value="",
-                        key="custom_bins_tab2",
-                        help="VD: 0,25,50,75,100"
-                    )
-                else:
-                    num_bins_tab = st.slider(
-                        "Số nhóm:",
-                        min_value=2,
-                        max_value=10,
-                        value=5,
-                        key="num_bins_tab2",
-                        help="Số lượng nhóm muốn chia"
-                    )
-                
-                # Visualize bins before applying
-                if st.button("👁️ Xem Trước", key="preview_bins_tab2", use_container_width=True):
-                    st.info("Đang tính toán bins...")
-            
-            with col_bin_tab2:
-                st.markdown("##### 📊 Trực Quan Hóa Binning")
-                
-                # Visualize binning
-                col_data_viz = data[selected_bin_col_tab].dropna()
-                
-                if len(col_data_viz) > 0:
-                    # Calculate bins based on method
-                    if binning_method_tab == "Equal Width (Khoảng đều)" or binning_method_tab == "Equal Frequency (Tần suất đều)" or binning_method_tab == "Quantile":
-                        n_bins_viz = num_bins_tab if 'num_bins_tab' in locals() else 5
-                        
-                        if binning_method_tab == "Equal Width (Khoảng đều)":
-                            _, bin_edges_viz = pd.cut(col_data_viz, bins=n_bins_viz, retbins=True, duplicates='drop')
-                        else:
-                            _, bin_edges_viz = pd.qcut(col_data_viz, q=n_bins_viz, retbins=True, duplicates='drop')
-                        
-                        # Create histogram with bin edges
-                        fig = go.Figure()
-                        
-                        fig.add_trace(go.Histogram(
-                            x=col_data_viz,
-                            nbinsx=n_bins_viz,
-                            name='Distribution',
-                            marker_color='#667eea',
-                            opacity=0.7
-                        ))
-                        
-                        # Add bin edges as vertical lines
-                        for edge in bin_edges_viz:
-                            fig.add_vline(x=edge, line_dash="dash", line_color="red", opacity=0.5)
-                        
-                        fig.update_layout(
-                            title=f"Binning Preview: {selected_bin_col_tab}",
-                            xaxis_title=selected_bin_col_tab,
-                            yaxis_title="Frequency",
-                            template="plotly_dark",
-                            height=350,
-                            margin=dict(l=0, r=0, t=40, b=0)
-                        )
-                        
-                        st.plotly_chart(fig, use_container_width=True)
-                        
-                        # Show bin statistics
-                        st.markdown("**📊 Thống Kê Từng Nhóm:**")
-                        bin_labels = pd.cut(col_data_viz, bins=bin_edges_viz, duplicates='drop')
-                        bin_counts = bin_labels.value_counts().sort_index()
-                        
-                        bin_stats_df = pd.DataFrame({
-                            'Nhóm': [f"Bin {i+1}" for i in range(len(bin_counts))],
-                            'Khoảng': [str(interval) for interval in bin_counts.index],
-                            'Số mẫu': bin_counts.values
-                        })
-                        st.dataframe(bin_stats_df, use_container_width=True, hide_index=True)
-                else:
-                    st.warning("⚠️ Không có dữ liệu hợp lệ để binning")
-        else:
-            st.info("💡 Không có biến số để thực hiện binning")
     
-    # Tab 3: Feature Importance
-    with tab3:
+    # Tab 2: Feature Importance
+    with tab2:
         st.markdown("### ⭐ Mức Độ Quan Trọng Của Đặc Trưng")
         
-        col1, col2 = st.columns([1, 3])
-        
-        with col1:
-            st.markdown("#### ⚙️ Cấu Hình")
+        # Check if train/valid/test split exists
+        if 'train_data' not in st.session_state or st.session_state.train_data is None:
+            st.warning("⚠️ Vui lòng chia tập Train/Valid/Test trước khi tính Feature Importance")
+            st.info("💡 Quay lại Tab 'Tiền Xử Lý' > Mục 2️⃣ để chia dữ liệu")
+        else:
+            col1, col2 = st.columns([1, 3])
             
-            importance_method = st.selectbox(
-                "Phương pháp tính:",
-                ["Random Forest", "LightGBM", "XGBoost", "Logistic Regression (Coef)"],
-                key="importance_method"
-            )
-            
-            top_n = st.slider("Top N features:", 5, 30, 15, key="top_n_features")
-            
-            if st.button("🔄 Tính Feature Importance", key="calc_importance", type="primary"):
-                with st.spinner("Đang tính toán..."):
-                    show_processing_placeholder(f"Tính feature importance bằng {importance_method}")
-                    st.success("✅ Đã tính xong!")
-        
-        with col2:
-            st.markdown("#### 📊 Biểu Đồ Feature Importance")
-            
-            # Mock feature importance data
-            numeric_cols = data.select_dtypes(include=[np.number]).columns.tolist()
-            if len(numeric_cols) > 0:
-                sample_features = numeric_cols[:min(top_n, len(numeric_cols))]
-                importance_scores = np.random.random(len(sample_features))
-                importance_scores = importance_scores / importance_scores.sum()  # Normalize
+            with col1:
+                st.markdown("#### ⚙️ Cấu Hình")
                 
-                # Sort by importance
-                sorted_indices = np.argsort(importance_scores)[::-1]
-                sorted_features = [sample_features[i] for i in sorted_indices]
-                sorted_scores = importance_scores[sorted_indices]
+                # Select target column
+                train_cols = st.session_state.train_data.columns.tolist()
                 
-                # Create bar chart
-                fig = go.Figure()
+                # Try to detect target column
+                potential_targets = [col for col in train_cols 
+                                   if 'target' in col.lower() or 'default' in col.lower() 
+                                   or 'label' in col.lower() or 'churn' in col.lower()]
                 
-                fig.add_trace(go.Bar(
-                    x=sorted_scores,
-                    y=sorted_features,
-                    orientation='h',
-                    marker=dict(
-                        color=sorted_scores,
-                        colorscale='Viridis',
-                        showscale=True,
-                        colorbar=dict(title="Importance")
-                    ),
-                    text=[f"{score:.3f}" for score in sorted_scores],
-                    textposition='outside'
-                ))
+                if potential_targets:
+                    default_target_idx = train_cols.index(potential_targets[0])
+                else:
+                    default_target_idx = len(train_cols) - 1
                 
-                fig.update_layout(
-                    title=f"Top {len(sorted_features)} Important Features",
-                    xaxis_title="Importance Score",
-                    yaxis_title="Features",
-                    template="plotly_dark",
-                    height=max(400, len(sorted_features) * 25),
-                    showlegend=False
+                target_col_importance = st.selectbox(
+                    "Chọn biến mục tiêu (Target):",
+                    train_cols,
+                    index=default_target_idx,
+                    key="target_col_importance"
                 )
                 
-                st.plotly_chart(fig, use_container_width=True)
+                importance_method = st.selectbox(
+                    "Phương pháp tính:",
+                    ["Random Forest", "LightGBM", "XGBoost", "Logistic Regression (Coef)"],
+                    key="importance_method"
+                )
                 
-                st.info("💡 **Lưu ý**: Đây là dữ liệu mô phỏng. Backend sẽ tính toán importance thực tế từ mô hình.")
-            else:
-                st.warning("⚠️ Không có biến số để tính feature importance")
+                top_n = st.slider("Top N features:", 5, 30, 15, key="top_n_features")
+                
+                # Task type selection
+                task_type = st.radio(
+                    "Loại bài toán:",
+                    ["auto", "classification", "regression"],
+                    index=0,
+                    key="task_type_importance",
+                    help="auto: Tự động phát hiện dựa trên số lượng giá trị unique của target"
+                )
+                
+                if st.button("🔄 Tính Feature Importance", key="calc_importance", type="primary"):
+                    try:
+                        with st.spinner(f"Đang tính feature importance bằng {importance_method}..."):
+                            from backend.models.feature_importance import calculate_feature_importance
+                            
+                            # Prepare data
+                            X_train = st.session_state.train_data.drop(columns=[target_col_importance])
+                            y_train = st.session_state.train_data[target_col_importance]
+                            
+                            # Calculate importance
+                            importance_results = calculate_feature_importance(
+                                X_train=X_train,
+                                y_train=y_train,
+                                method=importance_method,
+                                top_n=top_n,
+                                task_type=task_type
+                            )
+                            
+                            # Save to session state
+                            st.session_state.feature_importance_results = importance_results
+                            st.session_state.importance_target_col = target_col_importance
+                            
+                            st.success(f"✅ Đã tính xong! Phát hiện: {importance_results['task_type']}")
+                            st.rerun()
+                    
+                    except Exception as e:
+                        st.error(f"❌ Lỗi: {str(e)}")
+                        import traceback
+                        with st.expander("Chi tiết lỗi"):
+                            st.code(traceback.format_exc())
+                
+                # Show info
+                if st.session_state.train_data is not None:
+                    st.markdown("---")
+                    st.markdown("##### 📊 Thông Tin Dữ Liệu")
+                    st.metric("Số mẫu train", len(st.session_state.train_data))
+                    st.metric("Số features", len(train_cols) - 1)
+            
+            with col2:
+                st.markdown("#### 📊 Biểu Đồ Feature Importance")
+                
+                # Display results if available
+                if 'feature_importance_results' in st.session_state and st.session_state.feature_importance_results:
+                    results = st.session_state.feature_importance_results
+                    
+                    sorted_features = results['feature_names']
+                    sorted_scores = results['importance_scores']
+                    
+                    # Create bar chart
+                    fig = go.Figure()
+                    
+                    fig.add_trace(go.Bar(
+                        x=sorted_scores,
+                        y=sorted_features,
+                        orientation='h',
+                        marker=dict(
+                            color=sorted_scores,
+                            colorscale='Viridis',
+                            showscale=True,
+                            colorbar=dict(title="Importance")
+                        ),
+                        text=[f"{score:.4f}" for score in sorted_scores],
+                        textposition='outside'
+                    ))
+                    
+                    fig.update_layout(
+                        title=f"Top {len(sorted_features)} Important Features - {results['method']}",
+                        xaxis_title="Importance Score",
+                        yaxis_title="Features",
+                        template="plotly_dark",
+                        height=max(400, len(sorted_features) * 25),
+                        showlegend=False
+                    )
+                    
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Show additional info
+                    col_info1, col_info2, col_info3 = st.columns(3)
+                    with col_info1:
+                        st.metric("Phương pháp", results['method'])
+                    with col_info2:
+                        st.metric("Loại bài toán", results['task_type'])
+                    with col_info3:
+                        st.metric("Tổng features", results['n_features'])
+                    
+                    # Show detailed table
+                    with st.expander("📋 Xem Bảng Chi Tiết"):
+                        importance_df = pd.DataFrame({
+                            'Feature': sorted_features,
+                            'Importance Score': sorted_scores,
+                            'Percentage': [f"{score*100:.2f}%" for score in sorted_scores]
+                        })
+                        st.dataframe(importance_df, use_container_width=True, hide_index=True)
+                    
+                    # Feature selection recommendation
+                    st.markdown("---")
+                    st.markdown("##### 💡 Gợi Ý Lựa Chọn Features")
+                    
+                    threshold = st.slider(
+                        "Ngưỡng importance tối thiểu:",
+                        0.0, 0.1, 0.01, 0.001,
+                        key="importance_threshold_recommend",
+                        help="Features có importance < ngưỡng này sẽ được đề xuất loại bỏ"
+                    )
+                    
+                    from backend.models.feature_importance import get_feature_importance_recommendations
+                    
+                    recommendations = get_feature_importance_recommendations(results, threshold)
+                    
+                    col_rec1, col_rec2 = st.columns(2)
+                    with col_rec1:
+                        st.success(f"✅ Giữ lại: {recommendations['n_recommended']} features")
+                        if recommendations['recommended_features']:
+                            with st.expander("Xem danh sách"):
+                                for feat in recommendations['recommended_features'][:20]:
+                                    st.text(f"• {feat}")
+                                if recommendations['n_recommended'] > 20:
+                                    st.text(f"... và {recommendations['n_recommended'] - 20} features khác")
+                    
+                    with col_rec2:
+                        st.warning(f"⚠️ Có thể bỏ: {recommendations['n_removed']} features")
+                        if recommendations['removed_features']:
+                            with st.expander("Xem danh sách"):
+                                for feat in recommendations['removed_features'][:20]:
+                                    st.text(f"• {feat}")
+                                if recommendations['n_removed'] > 20:
+                                    st.text(f"... và {recommendations['n_removed'] - 20} features khác")
+                
+                else:
+                    st.info("💡 Nhấn nút 'Tính Feature Importance' bên trái để bắt đầu phân tích")
+                    
+                    # Show placeholder chart
+                    st.markdown("""
+                    <div style="background-color: #262730; padding: 2rem; border-radius: 8px; text-align: center; margin: 2rem 0;">
+                        <h3 style="color: #667eea;">📊 Biểu Đồ Feature Importance</h3>
+                        <p style="color: #888; margin-top: 1rem;">
+                            Biểu đồ sẽ hiển thị sau khi tính toán xong
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
     
-    # Tab 4: Feature Selection
-    with tab4:
+    # Tab 3: Feature Selection
+    with tab3:
         st.markdown("### ✅ Chọn Đặc Trưng Cho Mô Hình")
         
         st.markdown("""
