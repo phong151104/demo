@@ -214,7 +214,7 @@ def render():
         
         with col1:
             st.markdown(f"""
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+            <div style="background: linear-gradient(135deg, #1f2937 0%, #345f9c 100%); 
                         padding: 2rem; border-radius: 15px; text-align: center;">
                 <h2 style="margin: 0; color: white; font-size: 3rem;">{result['credit_score']}</h2>
                 <p style="margin: 0.5rem 0 0 0; color: rgba(255,255,255,0.9); font-size: 1.2rem;">
@@ -496,7 +496,7 @@ def render():
         
         with col1:
             st.markdown("""
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+            <div style="background: linear-gradient(135deg, #1f2937 0%, #345f9c 100%); 
                         padding: 1.5rem; border-radius: 10px;">
                 <h3 style="margin: 0; color: white;">Tháng 1-2</h3>
                 <ul style="color: rgba(255,255,255,0.9); margin-bottom: 0;">
@@ -509,7 +509,7 @@ def render():
         
         with col2:
             st.markdown("""
-            <div style="background: linear-gradient(135deg, #764ba2 0%, #667eea 100%); 
+            <div style="background: linear-gradient(135deg, #345f9c 0%, #1f2937 100%); 
                         padding: 1.5rem; border-radius: 10px;">
                 <h3 style="margin: 0; color: white;">Tháng 3-4</h3>
                 <ul style="color: rgba(255,255,255,0.9); margin-bottom: 0;">
@@ -522,7 +522,7 @@ def render():
         
         with col3:
             st.markdown("""
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+            <div style="background: linear-gradient(135deg, #1f2937 0%, #345f9c 100%); 
                         padding: 1.5rem; border-radius: 10px;">
                 <h3 style="margin: 0; color: white;">Tháng 5-6</h3>
                 <ul style="color: rgba(255,255,255,0.9); margin-bottom: 0;">

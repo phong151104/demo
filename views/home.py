@@ -11,7 +11,7 @@ def render():
     init_session_state()
     
     # Welcome section
-    st.markdown("## ▣ Welcome to Credit Scoring System")
+    st.markdown("## Welcome to Credit Scoring System")
     
     st.markdown("""
     A comprehensive platform for analyzing, evaluating, and predicting customer creditworthiness 
@@ -24,7 +24,7 @@ def render():
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("### ▣ Key Features")
+        st.markdown("### Key Features")
         
         features = [
             ("↑", "Data Upload & Analysis", "Import and explore your datasets"),
@@ -43,7 +43,7 @@ def render():
             """, unsafe_allow_html=True)
     
     with col2:
-        st.markdown("### ◐ Current Status")
+        st.markdown("### Current Status")
         
         session_info = get_session_info()
         
@@ -89,7 +89,7 @@ def render():
     for col, (num, desc) in zip(cols, steps):
         with col:
             st.markdown(f"""
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+            <div style="background: linear-gradient(135deg, #1f2937 0%, #345f9c 100%); 
                         padding: 1.5rem; border-radius: 10px; text-align: center; height: 120px;
                         display: flex; flex-direction: column; justify-content: center;">
                 <div style="font-size: 2rem; margin-bottom: 0.5rem;">{num}</div>

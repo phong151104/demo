@@ -949,27 +949,16 @@ def render():
             numeric_cols_validate = data.select_dtypes(include=[np.number]).columns.tolist()
             
             if numeric_cols_validate:
-                selected_validate_col = st.selectbox(
-                    "Chọn cột cần xử lý:",
+                selected_validate_cols = st.multiselect(
+                    "Chọn các cột cần xử lý (có thể chọn nhiều):",
                     numeric_cols_validate,
-                    key="validate_col",
-                    help="Chọn cột số để kiểm tra và xử lý giá trị không hợp lệ"
+                    key="validate_cols",
+                    help="Chọn một hoặc nhiều cột số để áp dụng cùng quy tắc xử lý"
                 )
                 
-                # Show statistics
-                col_data_valid = data[selected_validate_col].dropna()
-                if len(col_data_valid) > 0:
-                    col_min = col_data_valid.min()
-                    col_max = col_data_valid.max()
-                    col_mean = col_data_valid.mean()
-                    
-                    stat_col1, stat_col2, stat_col3 = st.columns(3)
-                    with stat_col1:
-                        st.metric("Min", f"{col_min:.2f}")
-                    with stat_col2:
-                        st.metric("Mean", f"{col_mean:.2f}")
-                    with stat_col3:
-                        st.metric("Max", f"{col_max:.2f}")
+                if len(selected_validate_cols) > 0:
+                    # Show summary statistics for selected columns
+                    st.info(f"📊 Đã chọn **{len(selected_validate_cols)}** cột: {', '.join([f'`{c}`' for c in selected_validate_cols[:3]])}{'...' if len(selected_validate_cols) > 3 else ''}")
                     
                     st.markdown("---")
                     
@@ -981,8 +970,9 @@ def render():
                     )
                     
                     if validation_type == "Giá trị âm":
-                        invalid_count = len(data[data[selected_validate_col] < 0])
-                        st.info(f"📊 Tìm thấy **{invalid_count}** giá trị âm")
+                        # Calculate total invalid count across selected columns
+                        total_invalid = sum([len(data[data[col] < 0]) for col in selected_validate_cols])
+                        st.info(f"📊 Tổng **{total_invalid}** giá trị âm trong {len(selected_validate_cols)} cột")
                         
                         action = st.radio(
                             "Hành động:",
@@ -994,40 +984,50 @@ def render():
                         if 'validation_config' not in st.session_state:
                             st.session_state.validation_config = {}
                         
-                        if st.button("✅ Áp Dụng", key="apply_negative", use_container_width=True, type="primary"):
-                            if invalid_count > 0:
-                                # Backup before applying
+                        if st.button("✅ Áp Dụng Cho Tất Cả Cột", key="apply_negative", use_container_width=True, type="primary"):
+                            if total_invalid > 0:
+                                # Backup and apply for each column
                                 if 'column_backups' not in st.session_state:
                                     st.session_state.column_backups = {}
-                                backup_key = f"validation_{selected_validate_col}"
-                                st.session_state.column_backups[backup_key] = st.session_state.data[selected_validate_col].copy()
                                 
-                                # Save config
-                                st.session_state.validation_config[selected_validate_col] = {
-                                    'type': validation_type,
-                                    'action': action,
-                                    'affected_count': invalid_count,
-                                    'applied': True
-                                }
+                                processed_cols = []
+                                for col in selected_validate_cols:
+                                    invalid_count = len(data[data[col] < 0])
+                                    if invalid_count > 0:
+                                        # Backup
+                                        backup_key = f"validation_{col}"
+                                        st.session_state.column_backups[backup_key] = st.session_state.data[col].copy()
+                                        
+                                        # Apply
+                                        if action == "Chuyển về 0":
+                                            st.session_state.data.loc[st.session_state.data[col] < 0, col] = 0
+                                        else:
+                                            st.session_state.data.loc[st.session_state.data[col] < 0, col] = np.nan
+                                        
+                                        # Save config
+                                        st.session_state.validation_config[col] = {
+                                            'type': validation_type,
+                                            'action': action,
+                                            'affected_count': invalid_count,
+                                            'applied': True
+                                        }
+                                        processed_cols.append(col)
                                 
-                                # Apply
-                                if action == "Chuyển về 0":
-                                    st.session_state.data.loc[st.session_state.data[selected_validate_col] < 0, selected_validate_col] = 0
-                                else:
-                                    st.session_state.data.loc[st.session_state.data[selected_validate_col] < 0, selected_validate_col] = np.nan
-                                st.success(f"✅ Đã xử lý {invalid_count} giá trị âm!")
+                                st.success(f"✅ Đã xử lý {total_invalid} giá trị âm trong {len(processed_cols)} cột!")
                                 st.rerun()
                             else:
-                                st.info("Không có giá trị âm để xử lý")
+                                st.info("Không có giá trị âm để xử lý trong các cột đã chọn")
                     
                     elif validation_type == "Ngưỡng tối thiểu":
                         min_threshold = st.number_input(
                             "Ngưỡng min (giá trị < ngưỡng sẽ bị xử lý):",
-                            value=float(col_min),
+                            value=0.0,
                             key="min_threshold"
                         )
-                        invalid_count = len(data[data[selected_validate_col] < min_threshold])
-                        st.info(f"📊 Tìm thấy **{invalid_count}** giá trị < {min_threshold}")
+                        
+                        # Calculate total invalid count
+                        total_invalid = sum([len(data[data[col] < min_threshold]) for col in selected_validate_cols])
+                        st.info(f"📊 Tổng **{total_invalid}** giá trị < {min_threshold} trong {len(selected_validate_cols)} cột")
                         
                         action = st.radio(
                             "Hành động:",
@@ -1035,42 +1035,50 @@ def render():
                             key="min_action"
                         )
                         
-                        if st.button("✅ Áp Dụng", key="apply_min", use_container_width=True, type="primary"):
-                            if invalid_count > 0:
-                                # Backup before applying
+                        if st.button("✅ Áp Dụng Cho Tất Cả Cột", key="apply_min", use_container_width=True, type="primary"):
+                            if total_invalid > 0:
                                 if 'column_backups' not in st.session_state:
                                     st.session_state.column_backups = {}
-                                backup_key = f"validation_{selected_validate_col}"
-                                st.session_state.column_backups[backup_key] = st.session_state.data[selected_validate_col].copy()
-                                
-                                # Save config
                                 if 'validation_config' not in st.session_state:
                                     st.session_state.validation_config = {}
                                 
-                                st.session_state.validation_config[selected_validate_col] = {
-                                    'type': validation_type,
-                                    'threshold': min_threshold,
-                                    'action': action,
-                                    'affected_count': invalid_count,
-                                    'applied': True
-                                }
+                                processed_cols = []
+                                for col in selected_validate_cols:
+                                    invalid_count = len(data[data[col] < min_threshold])
+                                    if invalid_count > 0:
+                                        # Backup
+                                        backup_key = f"validation_{col}"
+                                        st.session_state.column_backups[backup_key] = st.session_state.data[col].copy()
+                                        
+                                        # Apply
+                                        if "NA" in action:
+                                            st.session_state.data.loc[st.session_state.data[col] < min_threshold, col] = np.nan
+                                        else:
+                                            st.session_state.data.loc[st.session_state.data[col] < min_threshold, col] = min_threshold
+                                        
+                                        # Save config
+                                        st.session_state.validation_config[col] = {
+                                            'type': validation_type,
+                                            'threshold': min_threshold,
+                                            'action': action,
+                                            'affected_count': invalid_count,
+                                            'applied': True
+                                        }
+                                        processed_cols.append(col)
                                 
-                                # Apply
-                                if "NA" in action:
-                                    st.session_state.data.loc[st.session_state.data[selected_validate_col] < min_threshold, selected_validate_col] = np.nan
-                                else:
-                                    st.session_state.data.loc[st.session_state.data[selected_validate_col] < min_threshold, selected_validate_col] = min_threshold
-                                st.success(f"✅ Đã xử lý {invalid_count} giá trị!")
+                                st.success(f"✅ Đã xử lý {total_invalid} giá trị trong {len(processed_cols)} cột!")
                                 st.rerun()
                     
                     elif validation_type == "Ngưỡng tối đa":
                         max_threshold = st.number_input(
                             "Ngưỡng max (giá trị > ngưỡng sẽ bị xử lý):",
-                            value=float(col_max),
+                            value=100.0,
                             key="max_threshold"
                         )
-                        invalid_count = len(data[data[selected_validate_col] > max_threshold])
-                        st.info(f"📊 Tìm thấy **{invalid_count}** giá trị > {max_threshold}")
+                        
+                        # Calculate total invalid count
+                        total_invalid = sum([len(data[data[col] > max_threshold]) for col in selected_validate_cols])
+                        st.info(f"📊 Tổng **{total_invalid}** giá trị > {max_threshold} trong {len(selected_validate_cols)} cột")
                         
                         action = st.radio(
                             "Hành động:",
@@ -1078,43 +1086,50 @@ def render():
                             key="max_action"
                         )
                         
-                        if st.button("✅ Áp Dụng", key="apply_max", use_container_width=True, type="primary"):
-                            if invalid_count > 0:
-                                # Backup before applying
+                        if st.button("✅ Áp Dụng Cho Tất Cả Cột", key="apply_max", use_container_width=True, type="primary"):
+                            if total_invalid > 0:
                                 if 'column_backups' not in st.session_state:
                                     st.session_state.column_backups = {}
-                                backup_key = f"validation_{selected_validate_col}"
-                                st.session_state.column_backups[backup_key] = st.session_state.data[selected_validate_col].copy()
-                                
-                                # Save config
                                 if 'validation_config' not in st.session_state:
                                     st.session_state.validation_config = {}
                                 
-                                st.session_state.validation_config[selected_validate_col] = {
-                                    'type': validation_type,
-                                    'threshold': max_threshold,
-                                    'action': action,
-                                    'affected_count': invalid_count,
-                                    'applied': True
-                                }
+                                processed_cols = []
+                                for col in selected_validate_cols:
+                                    invalid_count = len(data[data[col] > max_threshold])
+                                    if invalid_count > 0:
+                                        # Backup
+                                        backup_key = f"validation_{col}"
+                                        st.session_state.column_backups[backup_key] = st.session_state.data[col].copy()
+                                        
+                                        # Apply
+                                        if "NA" in action:
+                                            st.session_state.data.loc[st.session_state.data[col] > max_threshold, col] = np.nan
+                                        else:
+                                            st.session_state.data.loc[st.session_state.data[col] > max_threshold, col] = max_threshold
+                                        
+                                        # Save config
+                                        st.session_state.validation_config[col] = {
+                                            'type': validation_type,
+                                            'threshold': max_threshold,
+                                            'action': action,
+                                            'affected_count': invalid_count,
+                                            'applied': True
+                                        }
+                                        processed_cols.append(col)
                                 
-                                # Apply
-                                if "NA" in action:
-                                    st.session_state.data.loc[st.session_state.data[selected_validate_col] > max_threshold, selected_validate_col] = np.nan
-                                else:
-                                    st.session_state.data.loc[st.session_state.data[selected_validate_col] > max_threshold, selected_validate_col] = max_threshold
-                                st.success(f"✅ Đã xử lý {invalid_count} giá trị!")
+                                st.success(f"✅ Đã xử lý {total_invalid} giá trị trong {len(processed_cols)} cột!")
                                 st.rerun()
                     
                     elif validation_type == "Khoảng giá trị":
                         col_range1, col_range2 = st.columns(2)
                         with col_range1:
-                            range_min = st.number_input("Min:", value=float(col_min), key="range_min")
+                            range_min = st.number_input("Min:", value=0.0, key="range_min")
                         with col_range2:
-                            range_max = st.number_input("Max:", value=float(col_max), key="range_max")
+                            range_max = st.number_input("Max:", value=100.0, key="range_max")
                         
-                        invalid_count = len(data[(data[selected_validate_col] < range_min) | (data[selected_validate_col] > range_max)])
-                        st.info(f"📊 Tìm thấy **{invalid_count}** giá trị ngoài [{range_min}, {range_max}]")
+                        # Calculate total invalid count
+                        total_invalid = sum([len(data[(data[col] < range_min) | (data[col] > range_max)]) for col in selected_validate_cols])
+                        st.info(f"📊 Tổng **{total_invalid}** giá trị ngoài [{range_min}, {range_max}] trong {len(selected_validate_cols)} cột")
                         
                         action = st.radio(
                             "Hành động:",
@@ -1123,33 +1138,39 @@ def render():
                             help="Clamp: giới hạn giá trị trong khoảng min-max"
                         )
                         
-                        if st.button("✅ Áp Dụng", key="apply_range", use_container_width=True, type="primary"):
-                            if invalid_count > 0:
-                                # Backup before applying
+                        if st.button("✅ Áp Dụng Cho Tất Cả Cột", key="apply_range", use_container_width=True, type="primary"):
+                            if total_invalid > 0:
                                 if 'column_backups' not in st.session_state:
                                     st.session_state.column_backups = {}
-                                backup_key = f"validation_{selected_validate_col}"
-                                st.session_state.column_backups[backup_key] = st.session_state.data[selected_validate_col].copy()
-                                
-                                # Save config
                                 if 'validation_config' not in st.session_state:
                                     st.session_state.validation_config = {}
                                 
-                                st.session_state.validation_config[selected_validate_col] = {
-                                    'type': validation_type,
-                                    'range': f'[{range_min}, {range_max}]',
-                                    'action': action,
-                                    'affected_count': invalid_count,
-                                    'applied': True
-                                }
+                                processed_cols = []
+                                for col in selected_validate_cols:
+                                    invalid_count = len(data[(data[col] < range_min) | (data[col] > range_max)])
+                                    if invalid_count > 0:
+                                        # Backup
+                                        backup_key = f"validation_{col}"
+                                        st.session_state.column_backups[backup_key] = st.session_state.data[col].copy()
+                                        
+                                        # Apply
+                                        if action == "Clamp về ngưỡng":
+                                            st.session_state.data[col] = st.session_state.data[col].clip(range_min, range_max)
+                                        else:
+                                            mask = (st.session_state.data[col] < range_min) | (st.session_state.data[col] > range_max)
+                                            st.session_state.data.loc[mask, col] = np.nan
+                                        
+                                        # Save config
+                                        st.session_state.validation_config[col] = {
+                                            'type': validation_type,
+                                            'range': f'[{range_min}, {range_max}]',
+                                            'action': action,
+                                            'affected_count': invalid_count,
+                                            'applied': True
+                                        }
+                                        processed_cols.append(col)
                                 
-                                # Apply
-                                if action == "Clamp về ngưỡng":
-                                    st.session_state.data[selected_validate_col] = st.session_state.data[selected_validate_col].clip(range_min, range_max)
-                                else:
-                                    mask = (st.session_state.data[selected_validate_col] < range_min) | (st.session_state.data[selected_validate_col] > range_max)
-                                    st.session_state.data.loc[mask, selected_validate_col] = np.nan
-                                st.success(f"✅ Đã xử lý {invalid_count} giá trị!")
+                                st.success(f"✅ Đã xử lý {total_invalid} giá trị trong {len(processed_cols)} cột!")
                                 st.rerun()
                 else:
                     st.warning("Cột này không có dữ liệu hợp lệ")
@@ -1225,26 +1246,23 @@ def render():
                 )
             
             st.markdown("---")
-            st.markdown("##### ⚙️ Cấu Hình Xử Lý Từng Cột")
+            st.markdown("##### ⚙️ Cấu Hình Xử Lý Nhiều Cột Cùng Lúc")
             
-            # Select column to configure
-            selected_missing_col = st.selectbox(
-                "Chọn cột để xử lý:",
+            # Select columns to configure
+            selected_missing_cols = st.multiselect(
+                "Chọn các cột cần xử lý (có thể chọn nhiều):",
                 missing_data.index.tolist(),
-                key="selected_missing_col"
+                key="selected_missing_cols",
+                help="Chọn một hoặc nhiều cột để áp dụng cùng phương pháp xử lý missing"
             )
             
-            # Show column info - simplified without nested columns
-            col_type = data[selected_missing_col].dtype
-            missing_count = missing_data[selected_missing_col]
-            missing_pct = (missing_count / len(data) * 100)
-            
-            st.markdown(f"""
-            **Kiểu dữ liệu:** `{col_type}` | **Số missing:** `{missing_count}` | **Tỷ lệ:** `{missing_pct:.1f}%`
-            """)
-            
-            # Method selection based on data type
-            if pd.api.types.is_numeric_dtype(data[selected_missing_col]):
+            if len(selected_missing_cols) > 0:
+                # Show summary info
+                total_missing = sum([missing_data[col] for col in selected_missing_cols])
+                st.info(f"📊 Đã chọn **{len(selected_missing_cols)}** cột: {', '.join([f'`{c}`' for c in selected_missing_cols[:3]])}{'...' if len(selected_missing_cols) > 3 else ''}")
+                st.markdown(f"**Tổng số missing:** {total_missing} giá trị")
+                
+                # Method selection - show all options for flexibility
                 method_options = [
                     "Mean Imputation",
                     "Median Imputation",
@@ -1255,132 +1273,142 @@ def render():
                     "Constant Value",
                     "Drop Rows"
                 ]
-            else:
-                method_options = [
-                    "Mode Imputation",
-                    "Forward Fill",
-                    "Backward Fill",
-                    "Constant Value",
-                    "Drop Rows"
-                ]
-            
-            selected_method = st.selectbox(
-                "Phương pháp xử lý:",
-                method_options,
-                key=f"method_{selected_missing_col}"
-            )
-            
-            # Constant value input if needed
-            constant_val = None
-            if selected_method == "Constant Value":
-                constant_val = st.text_input(
-                    "Giá trị:",
-                    value="0" if pd.api.types.is_numeric_dtype(data[selected_missing_col]) else "Unknown",
-                    key=f"const_{selected_missing_col}"
+                
+                selected_method = st.selectbox(
+                    "Phương pháp xử lý (áp dụng cho tất cả cột):",
+                    method_options,
+                    key="method_all_missing"
                 )
-            
-            # Initialize session state for missing config
-            if 'missing_config' not in st.session_state:
-                st.session_state.missing_config = {}
-            
-            # Process button
-            if st.button("✅ Xử Lý Ngay", key=f"add_config_{selected_missing_col}", use_container_width=True, type="primary"):
-                with st.spinner(f"Đang xử lý cột `{selected_missing_col}`..."):
-                    # BACKUP current state before processing
-                    st.session_state.column_backups[selected_missing_col] = {
-                        'data': st.session_state.data[selected_missing_col].copy(),
-                        'full_data': st.session_state.data.copy()
-                    }
-                    
-                    # Apply the method immediately to session data
-                    if selected_method == "Mean Imputation":
-                        st.session_state.data[selected_missing_col].fillna(
-                            st.session_state.data[selected_missing_col].mean(), inplace=True)
-                    elif selected_method == "Median Imputation":
-                        st.session_state.data[selected_missing_col].fillna(
-                            st.session_state.data[selected_missing_col].median(), inplace=True)
-                    elif selected_method == "Mode Imputation":
-                        mode_val = st.session_state.data[selected_missing_col].mode()
-                        fill_val = mode_val[0] if len(mode_val) > 0 else 0
-                        st.session_state.data[selected_missing_col].fillna(fill_val, inplace=True)
-                    elif selected_method == "Forward Fill":
-                        st.session_state.data[selected_missing_col].fillna(method='ffill', inplace=True)
-                    elif selected_method == "Backward Fill":
-                        st.session_state.data[selected_missing_col].fillna(method='bfill', inplace=True)
-                    elif selected_method == "Interpolation":
-                        st.session_state.data[selected_missing_col] = st.session_state.data[selected_missing_col].interpolate()
-                    elif selected_method == "Constant Value":
-                        fill_val = constant_val
-                        if pd.api.types.is_numeric_dtype(st.session_state.data[selected_missing_col]):
-                            fill_val = float(fill_val) if '.' in str(fill_val) else int(fill_val)
-                        st.session_state.data[selected_missing_col].fillna(fill_val, inplace=True)
-                    elif selected_method == "Drop Rows":
-                        st.session_state.data = st.session_state.data[st.session_state.data[selected_missing_col].notna()]
-                    
-                    # Save to config history for tracking
-                    st.session_state.missing_config[selected_missing_col] = {
-                        'method': selected_method,
-                        'original_missing': missing_count,
-                        'processed': True,
-                        'can_undo': True
-                    }
-                    if selected_method == "Constant Value":
-                        st.session_state.missing_config[selected_missing_col]['constant'] = constant_val
-                    
-                    st.success(f"✅ Đã xử lý cột `{selected_missing_col}` bằng {selected_method}")
-                    st.rerun()  # Refresh to update the display
-            
-            # Undo button
-            if selected_missing_col in st.session_state.missing_config:
-                if st.button("🔄 Hoàn Tác", key=f"remove_config_{selected_missing_col}", use_container_width=True):
-                    # Restore from backup
-                    if selected_missing_col in st.session_state.column_backups:
-                        backup = st.session_state.column_backups[selected_missing_col]
+                
+                # Constant value input if needed
+                constant_val = None
+                if selected_method == "Constant Value":
+                    constant_val = st.text_input(
+                        "Giá trị điền:",
+                        value="0",
+                        key="const_all_missing",
+                        help="Giá trị này sẽ được điền vào tất cả các cột đã chọn"
+                    )
+                
+                # Initialize session state for missing config
+                if 'missing_config' not in st.session_state:
+                    st.session_state.missing_config = {}
+                
+                # Process button
+                if st.button("✅ Xử Lý Tất Cả Cột Đã Chọn", key="add_config_all_missing", use_container_width=True, type="primary"):
+                    with st.spinner(f"Đang xử lý {len(selected_missing_cols)} cột..."):
+                        processed_count = 0
+                        total_filled = 0
                         
-                        # Check if it was "Drop Rows" - need full data restore
-                        config = st.session_state.missing_config[selected_missing_col]
-                        if config['method'] == "Drop Rows":
-                            st.session_state.data = backup['full_data'].copy()
+                        for col in selected_missing_cols:
+                            missing_count = missing_data[col]
+                            
+                            # BACKUP current state before processing
+                            st.session_state.column_backups[col] = {
+                                'data': st.session_state.data[col].copy(),
+                                'full_data': st.session_state.data.copy()
+                            }
+                            
+                            # Apply the method immediately to session data
+                            if selected_method == "Mean Imputation":
+                                if pd.api.types.is_numeric_dtype(st.session_state.data[col]):
+                                    st.session_state.data[col].fillna(
+                                        st.session_state.data[col].mean(), inplace=True)
+                                    total_filled += missing_count
+                                    processed_count += 1
+                            elif selected_method == "Median Imputation":
+                                if pd.api.types.is_numeric_dtype(st.session_state.data[col]):
+                                    st.session_state.data[col].fillna(
+                                        st.session_state.data[col].median(), inplace=True)
+                                    total_filled += missing_count
+                                    processed_count += 1
+                            elif selected_method == "Mode Imputation":
+                                mode_val = st.session_state.data[col].mode()
+                                fill_val = mode_val[0] if len(mode_val) > 0 else 0
+                                st.session_state.data[col].fillna(fill_val, inplace=True)
+                                total_filled += missing_count
+                                processed_count += 1
+                            elif selected_method == "Forward Fill":
+                                st.session_state.data[col].fillna(method='ffill', inplace=True)
+                                total_filled += missing_count
+                                processed_count += 1
+                            elif selected_method == "Backward Fill":
+                                st.session_state.data[col].fillna(method='bfill', inplace=True)
+                                total_filled += missing_count
+                                processed_count += 1
+                            elif selected_method == "Interpolation":
+                                if pd.api.types.is_numeric_dtype(st.session_state.data[col]):
+                                    st.session_state.data[col] = st.session_state.data[col].interpolate()
+                                    total_filled += missing_count
+                                    processed_count += 1
+                            elif selected_method == "Constant Value":
+                                fill_val = constant_val
+                                if pd.api.types.is_numeric_dtype(st.session_state.data[col]):
+                                    fill_val = float(fill_val) if '.' in str(fill_val) else int(fill_val)
+                                st.session_state.data[col].fillna(fill_val, inplace=True)
+                                total_filled += missing_count
+                                processed_count += 1
+                            elif selected_method == "Drop Rows":
+                                st.session_state.data = st.session_state.data[st.session_state.data[col].notna()]
+                                total_filled += missing_count
+                                processed_count += 1
+                            
+                            # Save to config history for tracking
+                            st.session_state.missing_config[col] = {
+                                'method': selected_method,
+                                'original_missing': missing_count,
+                                'processed': True,
+                                'can_undo': True
+                            }
+                            if selected_method == "Constant Value":
+                                st.session_state.missing_config[col]['constant'] = constant_val
+                        
+                        st.success(f"✅ Đã xử lý {processed_count} cột, tổng {total_filled} giá trị missing bằng {selected_method}!")
+                        st.rerun()  # Refresh to update the display
+            else:
+                st.info("💡 Vui lòng chọn ít nhất một cột để xử lý missing values")
+            
+            # Show current configuration (Processing History)
+            if st.session_state.get('missing_config'):
+                st.markdown("---")
+                st.markdown("##### 📋 Lịch Sử Xử Lý")
+                
+                config_df = pd.DataFrame([
+                    {
+                        'Cột': col,
+                        'Phương pháp': cfg['method'],
+                        'Missing ban đầu': f"{cfg['original_missing']}",
+                        'Giá trị điền': cfg.get('constant', '-'),
+                        'Trạng thái': '✅ Đã xử lý'
+                    }
+                    for col, cfg in st.session_state.missing_config.items()
+                ])
+                
+                st.dataframe(config_df, use_container_width=True, hide_index=True)
+                
+                # Undo specific column
+                st.markdown("**Hoàn tác từng cột:**")
+                col_undo1, col_undo2 = st.columns([3, 1])
+                with col_undo1:
+                    col_to_undo = st.selectbox("Chọn cột để hoàn tác:", list(st.session_state.missing_config.keys()), key="col_undo_select")
+                with col_undo2:
+                    if st.button("🔄 Hoàn Tác", key="undo_missing_btn"):
+                        if col_to_undo in st.session_state.column_backups:
+                            backup = st.session_state.column_backups[col_to_undo]
+                            config = st.session_state.missing_config[col_to_undo]
+                            
+                            if config['method'] == "Drop Rows":
+                                st.session_state.data = backup['full_data'].copy()
+                            else:
+                                st.session_state.data[col_to_undo] = backup['data'].copy()
+                            
+                            del st.session_state.missing_config[col_to_undo]
+                            del st.session_state.column_backups[col_to_undo]
+                            
+                            st.success(f"✅ Đã hoàn tác cột `{col_to_undo}`")
+                            st.rerun()
                         else:
-                            st.session_state.data[selected_missing_col] = backup['data'].copy()
-                        
-                        # Remove from config and backup
-                        del st.session_state.missing_config[selected_missing_col]
-                        del st.session_state.column_backups[selected_missing_col]
-                        
-                        st.success(f"✅ Đã hoàn tác xử lý cho cột `{selected_missing_col}`")
-                        st.rerun()
-                    else:
-                        st.error("⚠️ Không tìm thấy backup cho cột này")
-                        del st.session_state.missing_config[selected_missing_col]
-                        st.rerun()
-                
-                
-                # Show current configuration (Processing History)
-                if st.session_state.missing_config:
-                    st.markdown("---")
-                    st.markdown("##### � Lịch Sử Xử Lý")
-                    
-                    config_df = pd.DataFrame([
-                        {
-                            'Cột': col,
-                            'Phương pháp': cfg['method'],
-                            'Missing ban đầu': f"{cfg['original_missing']}",
-                            'Giá trị điền': cfg.get('constant', '-'),
-                            'Trạng thái': '✅ Đã xử lý'
-                        }
-                        for col, cfg in st.session_state.missing_config.items()
-                    ])
-                    
-                    st.dataframe(config_df, use_container_width=True, hide_index=True)
-                    
-                    # Clear all history button
-                    if st.button("🗑️ Xóa Toàn Bộ Lịch Sử", key="clear_history", use_container_width=True):
-                        st.session_state.missing_config = {}
-                        st.success("✅ Đã xóa lịch sử xử lý")
-                        st.rerun()
-                else:
-                    st.info("💡 Chưa xử lý cột nào. Chọn cột và phương pháp ở trên, sau đó bấm 'Xử Lý Ngay'.")
+                            st.error("⚠️ Không tìm thấy backup")
         
         # Section 5: Xử Lý Outliers & Biến Đổi Phân Phối
         st.markdown("---")

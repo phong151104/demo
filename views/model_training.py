@@ -142,7 +142,7 @@ def render():
                 st.markdown("#### ✅ Mô Hình Hiện Tại")
                 
                 st.markdown(f"""
-                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                <div style="background: linear-gradient(135deg, #1f2937 0%, #345f9c 100%); 
                             padding: 1.5rem; border-radius: 10px;">
                     <h3 style="margin: 0; color: white;">{st.session_state.model_type}</h3>
                     <p style="margin: 0.5rem 0 0 0; color: rgba(255,255,255,0.9);">

@@ -26,7 +26,7 @@ def load_custom_css():
         
         /* Header styling */
         .main-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #1f2937 0%, #345f9c 100%);
             padding: 2rem;
             border-radius: 10px;
             margin-bottom: 2rem;
@@ -77,7 +77,7 @@ def load_custom_css():
         
         /* Button styling */
         .stButton > button {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #1f2937 0%, #345f9c 100%);
             color: white;
             border: none;
             border-radius: 5px;
@@ -146,7 +146,7 @@ def load_custom_css():
         }
         
         .stTabs [aria-selected="true"] {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #1f2937 0%, #345f9c 100%);
         }
         
         /* DataFrame styling */
@@ -187,7 +187,7 @@ def render_header():
     """Render header chính của ứng dụng"""
     st.markdown("""
     <div class="main-header">
-        <h1>▣ CREDIT SCORING SYSTEM</h1>
+        <h1>CREDIT SCORING SYSTEM</h1>
         <p>Advanced Risk Assessment & Prediction Platform</p>
     </div>
     """, unsafe_allow_html=True)

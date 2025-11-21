@@ -43,7 +43,7 @@ try:
     print("✓ Header rendered", file=sys.stderr)
 except Exception as e:
     print(f"✗ Header error: {e}", file=sys.stderr)
-    st.markdown("# ▣ CREDIT SCORING SYSTEM")
+    st.markdown("# CREDIT SCORING SYSTEM")
     st.markdown("### Advanced Risk Assessment & Prediction Platform")
     st.markdown("---")
 
