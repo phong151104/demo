@@ -670,20 +670,23 @@ def render():
     color: #e0e0e0;
 }}
 
-.close-btn {{
-    color: white;
-    font-size: 28px;
-    font-weight: bold;
-    cursor: pointer;
-    background: none;
-    border: none;
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    transition: background 0.3s;
-}}
-
-.close-btn:hover {{
+            .close-btn {{
+                color: white;
+                font-size: 28px;
+                font-weight: bold;
+                cursor: pointer;
+                background: none;
+                border: none;
+                width: 32px;
+                height: 32px;
+                border-radius: 50%;
+                transition: background 0.3s;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                line-height: 1;
+                padding-bottom: 2px;
+            }}.close-btn:hover {{
     background: rgba(59, 130, 246, 0.3);
 }}
 
