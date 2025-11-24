@@ -26,10 +26,19 @@ def render():
         st.warning("⚠️ Chưa chọn đặc trưng. Vui lòng chọn đặc trưng từ trang 'Xử Lý & Chọn Biến'.")
         return
     
+    # Check if train/test split exists
+    if 'train_data' not in st.session_state or st.session_state.train_data is None:
+        st.warning("⚠️ Chưa chia tập dữ liệu. Vui lòng chia tập Train/Valid/Test ở trang 'Xử Lý & Chọn Biến'.")
+        return
+    
     st.success(f"✅ Sẵn sàng huấn luyện với {len(st.session_state.selected_features)} đặc trưng")
     
     st.markdown("---")
     
+    # Initialize model history
+    if 'model_history' not in st.session_state:
+        st.session_state.model_history = []
+
     # Tabs
     tab1, tab2, tab3 = st.tabs([
         "⚙️ Cấu Hình Mô Hình",
@@ -61,25 +70,11 @@ def render():
             
             st.markdown("---")
             
-            st.markdown("#### 2️⃣ Chia Dữ Liệu")
+            st.markdown("#### 2️⃣ Dữ Liệu Huấn Luyện")
             
-            test_size = st.slider(
-                "Tỷ lệ test set (%):",
-                10, 40, 20, 5,
-                key="test_size"
-            )
-            
-            random_state = st.number_input(
-                "Random state:",
-                0, 1000, 42,
-                key="random_state"
-            )
-            
-            stratify = st.checkbox(
-                "Stratified split",
-                value=True,
-                help="Giữ nguyên tỷ lệ các class trong train/test"
-            )
+            st.info(f"📊 Tập Train: {len(st.session_state.train_data)} dòng")
+            if 'test_data' in st.session_state and st.session_state.test_data is not None:
+                st.info(f"🧪 Tập Test: {len(st.session_state.test_data)} dòng")
             
             st.markdown("---")
             
@@ -90,36 +85,93 @@ def render():
                 c_value = st.slider("C (Regularization):", 0.001, 10.0, 1.0, 0.001, key="lr_c")
                 max_iter = st.number_input("Max iterations:", 100, 1000, 200, key="lr_iter")
                 
-            elif model_type in ["Random Forest", "XGBoost", "LightGBM", "CatBoost", "Gradient Boosting"]:
+            elif model_type == "Random Forest":
+                n_estimators = st.slider("Số cây (n_estimators):", 50, 500, 100, 10, key="n_trees")
+                max_depth = st.slider("Độ sâu tối đa:", 3, 20, 10, 1, key="max_depth")
+                
+            elif model_type in ["XGBoost", "LightGBM", "CatBoost", "Gradient Boosting"]:
                 n_estimators = st.slider("Số cây (n_estimators):", 50, 500, 100, 10, key="n_trees")
                 max_depth = st.slider("Độ sâu tối đa:", 3, 20, 6, 1, key="max_depth")
                 learning_rate = st.slider("Learning rate:", 0.01, 0.3, 0.1, 0.01, key="lr")
-                
-                if model_type in ["XGBoost", "LightGBM", "CatBoost"]:
-                    subsample = st.slider("Subsample:", 0.5, 1.0, 0.8, 0.1, key="subsample")
+                subsample = st.slider("Subsample:", 0.5, 1.0, 0.8, 0.1, key="subsample")
             
             st.markdown("---")
             
             # Train button
             if st.button("🚀 Huấn Luyện Mô Hình", type="primary", use_container_width=True):
-                with st.spinner(f"Đang huấn luyện {model_type}..."):
-                    show_processing_placeholder(f"Train {model_type} với {len(st.session_state.selected_features)} features")
-                    
-                    # Save model info to session
-                    st.session_state.model_type = model_type
-                    st.session_state.model = "trained"  # Placeholder
-                    
-                    # Mock metrics
-                    st.session_state.model_metrics = {
-                        'accuracy': np.random.uniform(0.75, 0.95),
-                        'precision': np.random.uniform(0.70, 0.90),
-                        'recall': np.random.uniform(0.65, 0.88),
-                        'f1': np.random.uniform(0.68, 0.89),
-                        'auc': np.random.uniform(0.80, 0.96)
-                    }
-                    
-                    st.success(f"✅ Đã huấn luyện {model_type} thành công!")
-                    st.balloons()
+                try:
+                    with st.spinner(f"Đang huấn luyện {model_type}..."):
+                        show_processing_placeholder(f"Train {model_type} với {len(st.session_state.selected_features)} features")
+                        
+                        # Prepare data
+                        target_col = st.session_state.target_column
+                        features = st.session_state.selected_features
+                        
+                        X_train = st.session_state.train_data[features]
+                        y_train = st.session_state.train_data[target_col]
+                        
+                        # Use test data if available, otherwise split train data (fallback)
+                        if 'test_data' in st.session_state and st.session_state.test_data is not None:
+                            X_test = st.session_state.test_data[features]
+                            y_test = st.session_state.test_data[target_col]
+                        else:
+                            # Fallback if no test data (should not happen if flow is followed)
+                            from sklearn.model_selection import train_test_split
+                            X_train, X_test, y_train, y_test = train_test_split(
+                                X_train, y_train, test_size=0.2, random_state=42
+                            )
+                        
+                        # Collect parameters
+                        params = {}
+                        if model_type == "Logistic Regression":
+                            params['C'] = c_value
+                            params['max_iter'] = max_iter
+                        elif model_type == "Random Forest":
+                            params['n_estimators'] = n_estimators
+                            params['max_depth'] = max_depth
+                        elif model_type in ["XGBoost", "LightGBM", "CatBoost", "Gradient Boosting"]:
+                            params['n_estimators'] = n_estimators
+                            params['max_depth'] = max_depth
+                            params['learning_rate'] = learning_rate
+                            params['subsample'] = subsample
+                        
+                        # Import backend
+                        from backend.models.trainer import train_model
+                        
+                        # Train model
+                        model, metrics = train_model(
+                            X_train, y_train, X_test, y_test, 
+                            model_type, params
+                        )
+                        
+                        # Save model info to session
+                        # st.session_state.model_type is already updated by the widget
+                        st.session_state.model = model
+                        st.session_state.model_metrics = metrics
+                        
+                        # Add to history
+                        import datetime
+                        history_entry = {
+                            'Model': model_type,
+                            'Accuracy': metrics['accuracy'],
+                            'Precision': metrics['precision'],
+                            'Recall': metrics['recall'],
+                            'F1-Score': metrics['f1'],
+                            'AUC': metrics['auc'],
+                            'Timestamp': datetime.datetime.now().strftime("%H:%M:%S"),
+                            'Params': str(params)
+                        }
+                        st.session_state.model_history.append(history_entry)
+                        
+                        st.success(f"✅ Đã huấn luyện {model_type} thành công!")
+                        st.balloons()
+                        st.rerun()
+                        
+                except Exception as e:
+                    st.error(f"❌ Lỗi khi huấn luyện mô hình: {str(e)}")
+                    import traceback
+                    with st.expander("Chi tiết lỗi"):
+                        st.code(traceback.format_exc())
         
         with col2:
             st.markdown("#### 📋 Thông Tin Huấn Luyện")
@@ -369,65 +421,31 @@ def render():
     
     # Tab 3: Model Comparison
     with tab3:
-        st.markdown("### 📈 So Sánh Nhiều Mô Hình")
+        st.markdown("### 📈 Lịch Sử & So Sánh Mô Hình")
         
-        st.markdown("""
-        <div style="background-color: #262730; padding: 1rem; border-radius: 8px; margin: 1rem 0;">
-            <p style="margin: 0;">💡 Huấn luyện và so sánh nhiều mô hình để chọn ra mô hình tốt nhất.</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Model selection for comparison
-        models_to_compare = st.multiselect(
-            "Chọn các mô hình để so sánh:",
-            [
-                "Logistic Regression",
-                "Random Forest",
-                "XGBoost",
-                "LightGBM",
-                "CatBoost"
-            ],
-            default=["Logistic Regression", "Random Forest", "XGBoost"]
-        )
-        
-        if st.button("🔄 So Sánh Các Mô Hình", type="primary"):
-            with st.spinner("Đang huấn luyện và so sánh..."):
-                show_processing_placeholder(f"Train và so sánh {len(models_to_compare)} mô hình")
-                st.success("✅ Đã hoàn thành so sánh!")
-        
-        if models_to_compare:
-            st.markdown("---")
-            st.markdown("#### 📊 Kết Quả So Sánh")
+        if not st.session_state.model_history:
+            st.info("💡 Chưa có lịch sử huấn luyện. Hãy huấn luyện ít nhất một mô hình ở Tab 1.")
+        else:
+            st.markdown(f"Đã lưu {len(st.session_state.model_history)} kết quả huấn luyện.")
             
-            # Mock comparison data
-            comparison_data = []
-            for model in models_to_compare:
-                comparison_data.append({
-                    'Model': model,
-                    'Accuracy': np.random.uniform(0.75, 0.92),
-                    'Precision': np.random.uniform(0.70, 0.90),
-                    'Recall': np.random.uniform(0.68, 0.88),
-                    'F1-Score': np.random.uniform(0.70, 0.89),
-                    'AUC': np.random.uniform(0.80, 0.95),
-                    'Training Time (s)': np.random.uniform(1, 30)
-                })
-            
-            comparison_df = pd.DataFrame(comparison_data)
+            # Convert history to DataFrame
+            history_df = pd.DataFrame(st.session_state.model_history)
             
             # Display table
+            st.markdown("#### 📊 Bảng So Sánh Chi Tiết")
             st.dataframe(
-                comparison_df.style.format({
+                history_df.style.format({
                     'Accuracy': '{:.3f}',
                     'Precision': '{:.3f}',
                     'Recall': '{:.3f}',
                     'F1-Score': '{:.3f}',
-                    'AUC': '{:.3f}',
-                    'Training Time (s)': '{:.2f}'
+                    'AUC': '{:.3f}'
                 }).background_gradient(subset=['Accuracy', 'Precision', 'Recall', 'F1-Score', 'AUC'], cmap='RdYlGn'),
                 use_container_width=True
             )
             
             # Comparison charts
+            st.markdown("#### 📉 Biểu Đồ So Sánh")
             col1, col2 = st.columns(2)
             
             with col1:
@@ -436,18 +454,22 @@ def render():
                 
                 metrics_to_plot = ['Accuracy', 'Precision', 'Recall', 'F1-Score', 'AUC']
                 
+                # Group by Model to get average or max if multiple runs of same model? 
+                # For now, just plot all runs, maybe add ID or Timestamp to x-axis
+                history_df['Run ID'] = history_df['Model'] + " (" + history_df['Timestamp'] + ")"
+                
                 for metric in metrics_to_plot:
                     fig.add_trace(go.Bar(
                         name=metric,
-                        x=comparison_df['Model'],
-                        y=comparison_df[metric],
-                        text=comparison_df[metric].round(3),
+                        x=history_df['Run ID'],
+                        y=history_df[metric],
+                        text=history_df[metric].round(3),
                         textposition='outside'
                     ))
                 
                 fig.update_layout(
-                    title='So Sánh Metrics Giữa Các Mô Hình',
-                    xaxis_title='Model',
+                    title='So Sánh Metrics Giữa Các Lần Chạy',
+                    xaxis_title='Model Run',
                     yaxis_title='Score',
                     template="plotly_dark",
                     height=400,
@@ -457,49 +479,28 @@ def render():
                 st.plotly_chart(fig, use_container_width=True)
             
             with col2:
-                # ROC curves comparison
-                fig = go.Figure()
-                
-                colors = ['#667eea', '#764ba2', '#f093fb', '#4facfe', '#43e97b']
-                
-                for i, model in enumerate(models_to_compare):
-                    auc = comparison_df[comparison_df['Model'] == model]['AUC'].values[0]
-                    fpr = np.linspace(0, 1, 100)
-                    tpr = np.sqrt(fpr) * auc + np.random.normal(0, 0.02, 100)
-                    tpr = np.clip(tpr, 0, 1)
-                    
-                    fig.add_trace(go.Scatter(
-                        x=fpr,
-                        y=tpr,
-                        mode='lines',
-                        name=f'{model} (AUC={auc:.3f})',
-                        line=dict(color=colors[i % len(colors)], width=2)
-                    ))
-                
-                # Diagonal
-                fig.add_trace(go.Scatter(
-                    x=[0, 1],
-                    y=[0, 1],
-                    mode='lines',
-                    name='Random',
-                    line=dict(color='red', width=2, dash='dash')
-                ))
-                
-                fig.update_layout(
-                    title='So Sánh ROC Curves',
-                    xaxis_title='False Positive Rate',
-                    yaxis_title='True Positive Rate',
-                    template="plotly_dark",
-                    height=400,
-                    showlegend=True
+                # Line chart for AUC trend
+                fig = px.line(
+                    history_df, 
+                    x='Timestamp', 
+                    y='AUC', 
+                    color='Model',
+                    markers=True,
+                    title='Xu Hướng AUC Theo Thời Gian'
                 )
-                
+                fig.update_layout(template="plotly_dark", height=400)
                 st.plotly_chart(fig, use_container_width=True)
             
             # Best model recommendation
-            best_model_idx = comparison_df['AUC'].idxmax()
-            best_model = comparison_df.loc[best_model_idx, 'Model']
-            best_auc = comparison_df.loc[best_model_idx, 'AUC']
+            best_run_idx = history_df['AUC'].idxmax()
+            best_model = history_df.loc[best_run_idx, 'Model']
+            best_auc = history_df.loc[best_run_idx, 'AUC']
+            best_time = history_df.loc[best_run_idx, 'Timestamp']
             
-            st.success(f"🏆 **Mô hình tốt nhất**: {best_model} với AUC = {best_auc:.3f}")
+            st.success(f"🏆 **Mô hình tốt nhất hiện tại**: {best_model} (chạy lúc {best_time}) với AUC = {best_auc:.3f}")
+            
+            # Clear history button
+            if st.button("🗑️ Xóa Lịch Sử", type="secondary"):
+                st.session_state.model_history = []
+                st.rerun()
 
