@@ -1085,24 +1085,6 @@ def split_data_fragment(data):
             st.markdown("---")
             st.info(f"📊 **Dataset hiện tại:** Train ({train_size:,} dòng)")
             st.caption("💡 Các bước xử lý sẽ được áp dụng trên Train, sau đó transform cho Valid/Test")
-            
-            # Reset split button
-            if st.button("🔄 Reset & Merge Tất Cả", key="reset_split_frag", type="secondary", width='stretch'):
-                # Merge all back
-                all_data = pd.concat([
-                    st.session_state.train_data,
-                    st.session_state.valid_data if st.session_state.get('valid_data') is not None else pd.DataFrame(),
-                    st.session_state.test_data
-                ], ignore_index=True)
-                
-                st.session_state.data = all_data
-                st.session_state.train_data = None
-                st.session_state.valid_data = None
-                st.session_state.test_data = None
-                st.session_state.split_config = None
-                
-                st.session_state._reset_split_success = "✅ Đã merge tất cả tập lại thành một!"
-                st.rerun(scope="fragment")
         
         else:
             current_data = st.session_state.data
@@ -2126,6 +2108,7 @@ def render():
         
         # Count all configurations
         total_configs = (
+            (1 if st.session_state.get('split_config') else 0) +
             len(st.session_state.get('removed_columns_config', {})) +
             len(st.session_state.get('missing_config', {})) +
             len(st.session_state.get('outlier_config', {}).get('columns', [])) +
@@ -2139,40 +2122,46 @@ def render():
         if total_configs > 0:
             # Summary cards - use 2 rows for better layout
             st.markdown("##### 📈 Tổng Quan")
+            status_row0_col1, status_row0_col2, status_row0_col3, status_row0_col4 = st.columns(4)
             status_row1_col1, status_row1_col2, status_row1_col3, status_row1_col4 = st.columns(4)
             status_row2_col1, status_row2_col2, status_row2_col3, status_row2_col4 = st.columns(4)
             
-            # Row 1
-            with status_row1_col1:
+            # Row 0 - Split info
+            with status_row0_col1:
+                split_applied = 1 if st.session_state.get('split_config') else 0
+                st.metric("✂️ Chia Tập", "Đã chia" if split_applied else "Chưa chia")
+            
+            with status_row0_col2:
                 removed_cols = len(st.session_state.get('removed_columns_config', {}))
                 st.metric("🗑️ Loại Bỏ Cột", removed_cols if removed_cols > 0 else "0")
             
-            with status_row1_col2:
-                missing_configs = len(st.session_state.get('missing_config', {}))
-                st.metric("📝 Missing Values", missing_configs if missing_configs > 0 else "0")
-            
-            with status_row1_col3:
-                outlier_configs = len(st.session_state.get('outlier_config', {}).get('columns', []))
-                st.metric("⚠️ Outliers", outlier_configs if outlier_configs > 0 else "0")
-            
-            with status_row1_col4:
+            with status_row0_col3:
                 validation_configs = len(st.session_state.get('validation_config', {}))
                 st.metric("✅ Validation", validation_configs if validation_configs > 0 else "0")
             
-            # Row 2
-            with status_row2_col1:
+            with status_row0_col4:
+                missing_configs = len(st.session_state.get('missing_config', {}))
+                st.metric("📝 Missing Values", missing_configs if missing_configs > 0 else "0")
+            
+            # Row 1
+            with status_row1_col1:
+                outlier_configs = len(st.session_state.get('outlier_config', {}).get('columns', []))
+                st.metric("⚠️ Outliers", outlier_configs if outlier_configs > 0 else "0")
+            
+            with status_row1_col2:
                 encoding_configs = len(st.session_state.get('encoding_config', {}))
                 st.metric("🔤 Encoding", encoding_configs if encoding_configs > 0 else "0")
             
-            with status_row2_col2:
+            with status_row1_col3:
                 binning_configs = len(st.session_state.get('binning_config', {}))
                 st.metric("📊 Binning", binning_configs if binning_configs > 0 else "0")
             
-            with status_row2_col3:
+            with status_row1_col4:
                 scaling_configs = len(st.session_state.get('scaling_config', {}))
                 st.metric("📏 Scaling", scaling_configs if scaling_configs > 0 else "0")
             
-            with status_row2_col4:
+            # Row 2
+            with status_row2_col1:
                 balance_applied = 1 if st.session_state.get('balance_info') else 0
                 st.metric("⚖️ Balancing", "Đã áp dụng" if balance_applied else "Chưa có")
             
@@ -2181,6 +2170,46 @@ def render():
             
             # Create a container for configurations with undo buttons
             config_count = 0
+            
+            # Split config - hiển thị đầu tiên
+            if st.session_state.get('split_config'):
+                config_count += 1
+                split_cfg = st.session_state.split_config
+                train_size = len(st.session_state.train_data) if st.session_state.get('train_data') is not None else 0
+                valid_size = len(st.session_state.valid_data) if st.session_state.get('valid_data') is not None else 0
+                test_size = len(st.session_state.test_data) if st.session_state.get('test_data') is not None else 0
+                
+                col1, col2, col3, col4, col5, col6 = st.columns([1.5, 1.5, 2, 1.5, 1.5, 0.8])
+                
+                with col1:
+                    st.markdown(f"**2️⃣ Chia Tập**")
+                with col2:
+                    st.markdown(f"`{split_cfg.get('target_column', 'N/A')}`")
+                with col3:
+                    st.markdown(f"Train {split_cfg.get('train_ratio')}% | Valid {split_cfg.get('valid_ratio')}% | Test {split_cfg.get('test_ratio')}%")
+                with col4:
+                    st.markdown(f"{train_size:,} | {valid_size:,} | {test_size:,}")
+                with col5:
+                    st.markdown("✅ **Đã áp dụng**")
+                with col6:
+                    if st.button("↩️", key="undo_split", help="Hoàn tác chia tập - Merge lại thành một"):
+                        # Merge all back
+                        all_data = pd.concat([
+                            st.session_state.train_data,
+                            st.session_state.valid_data if st.session_state.get('valid_data') is not None else pd.DataFrame(),
+                            st.session_state.test_data if st.session_state.get('test_data') is not None else pd.DataFrame()
+                        ], ignore_index=True)
+                        
+                        st.session_state.data = all_data
+                        st.session_state.train_data = None
+                        st.session_state.valid_data = None
+                        st.session_state.test_data = None
+                        st.session_state.split_config = None
+                        
+                        st.success("✅ Đã merge tất cả tập lại thành một!")
+                        st.rerun()
+                
+                st.markdown("---")
             
             # Removed columns
             for col, cfg in st.session_state.get('removed_columns_config', {}).items():
