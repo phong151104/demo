@@ -2040,20 +2040,50 @@ def feature_selection_fragment(data):
     col1, col2 = st.columns([1, 1])
     
     with col1:
+        # Get current saved target
+        current_target = st.session_state.get('target_column')
+        
+        # Determine initial index
+        if current_target and current_target in all_cols:
+            initial_index = all_cols.index(current_target)
+        else:
+            initial_index = len(all_cols) - 1 if len(all_cols) > 0 else 0
+        
         target_col = st.selectbox(
             "Chọn biến mục tiêu (Target):",
             all_cols,
-            index=len(all_cols) - 1 if len(all_cols) > 0 else 0,
+            index=initial_index,
             key="target_col_frag"
         )
-        # Lưu target column vào session state
-        st.session_state.target_column = target_col
+        
+        # Check if selection changed
+        selection_changed = (target_col != current_target)
+        
+        # Button to save target selection
+        if st.button(
+            "💾 Lưu Target", 
+            key="save_target_feature_sel_frag",
+            disabled=not selection_changed,
+            help="Lưu lựa chọn target column" if selection_changed else "Target đã được lưu",
+            use_container_width=True
+        ):
+            st.session_state.target_column = target_col
+            st.session_state._feature_selection_success = f"✅ Đã lưu target: `{target_col}`"
+            st.rerun(scope="fragment")
     
     with col2:
         st.metric("Số biến có sẵn", len(all_cols) - 1)
     
+    # Get the saved target column from session state
+    saved_target = st.session_state.get('target_column')
+    
+    # Check if target is selected
+    if not saved_target:
+        st.warning("⚠️ Vui lòng chọn và lưu cột target ở trên để tiếp tục")
+        return
+    
     # Available features (exclude target)
-    available_features = [col for col in all_cols if col != target_col]
+    available_features = [col for col in all_cols if col != saved_target]
     
     # Feature selection
     st.markdown("#### 🎯 Chọn Đặc Trưng")

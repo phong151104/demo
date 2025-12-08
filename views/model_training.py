@@ -49,400 +49,449 @@ def render():
     with tab1:
         st.markdown("### ⚙️ Cấu Hình Và Huấn Luyện")
         
-        col1, col2 = st.columns([1, 2])
+        # Initialize training flag
+        if '_training_in_progress' not in st.session_state:
+            st.session_state._training_in_progress = False
         
-        with col1:
-            st.markdown("#### 1️⃣ Chọn Mô Hình")
+        # Nếu đang training - hiển thị spinner TRƯỚC, không render form
+        if st.session_state._training_in_progress:
+            model_type = st.session_state._training_model_type
+            params = st.session_state._training_params
             
-            model_type = st.selectbox(
-                "Loại mô hình:",
-                [
-                    "Logistic Regression",
-                    "Random Forest",
-                    "XGBoost",
-                    "LightGBM",
-                    "CatBoost",
-                    "Gradient Boosting"
-                ],
-                key="model_type_select"
-            )
-            
-            st.markdown("---")
-            
-            st.markdown("#### 2️⃣ Dữ Liệu Huấn Luyện")
-            
-            st.info(f"📊 Tập Train: {len(st.session_state.train_data)} dòng")
-            if 'test_data' in st.session_state and st.session_state.test_data is not None:
-                st.info(f"🧪 Tập Test: {len(st.session_state.test_data)} dòng")
-            
-            st.markdown("---")
-            
-            st.markdown("#### 3️⃣ Tham Số Mô Hình")
-            
-            # Get tuned params if available
-            tuned_params = st.session_state.get('best_tuned_params', {})
-            
-            # Check if we need to apply tuned params (clear widget keys to force new defaults)
-            if st.session_state.get('apply_tuned_params_flag', False):
-                # Clear widget keys to reset to new defaults
-                keys_to_clear = ['lr_c', 'lr_iter', 'n_trees', 'max_depth', 'lr', 'subsample', 'min_samples_split', 'unlimited_depth']
-                for key in keys_to_clear:
-                    if key in st.session_state:
-                        del st.session_state[key]
-                st.session_state.apply_tuned_params_flag = False
-            
-            # Model-specific parameters
-            if model_type == "Logistic Regression":
-                default_c = tuned_params.get('C', 1.0)
-                default_max_iter = tuned_params.get('max_iter', 200)
-                # Clamp values to slider range
-                default_c = max(0.001, min(10.0, default_c))
-                default_max_iter = max(100, min(1000, default_max_iter))
-                
-                c_value = st.slider("C (Regularization):", 0.001, 10.0, float(default_c), 0.001, key="lr_c")
-                max_iter = st.number_input("Max iterations:", 100, 1000, int(default_max_iter), key="lr_iter")
-                
-            elif model_type == "Random Forest":
-                default_n_estimators = tuned_params.get('n_estimators', 100)
-                default_max_depth = tuned_params.get('max_depth', 10)
-                default_min_samples_split = tuned_params.get('min_samples_split', 2)
-                # Clamp values
-                default_n_estimators = max(50, min(500, default_n_estimators))
-                if default_max_depth is None:
-                    default_max_depth = 10
-                default_max_depth = max(3, min(20, default_max_depth))
-                default_min_samples_split = max(2, min(20, default_min_samples_split))
-                
-                n_estimators = st.slider("Số cây (n_estimators):", 50, 500, int(default_n_estimators), 10, key="n_trees")
-                max_depth = st.slider("Độ sâu tối đa:", 3, 20, int(default_max_depth), 1, key="max_depth")
-                min_samples_split = st.slider("Min samples split:", 2, 20, int(default_min_samples_split), 1, key="min_samples_split")
-                
-            elif model_type in ["XGBoost", "LightGBM", "CatBoost", "Gradient Boosting"]:
-                default_n_estimators = tuned_params.get('n_estimators', tuned_params.get('iterations', 100))
-                default_max_depth = tuned_params.get('max_depth', tuned_params.get('depth', 6))
-                default_learning_rate = tuned_params.get('learning_rate', 0.1)
-                default_subsample = tuned_params.get('subsample', 0.8)
-                
-                # Check if max_depth is unlimited (-1 or None)
-                is_unlimited_depth = default_max_depth == -1 or default_max_depth is None
-                
-                # Clamp values
-                default_n_estimators = max(50, min(500, default_n_estimators))
-                if default_max_depth is None or default_max_depth == -1:
-                    default_max_depth = 6  # Default for slider display
-                default_max_depth = max(3, min(20, default_max_depth))
-                default_learning_rate = max(0.01, min(0.3, default_learning_rate))
-                default_subsample = max(0.5, min(1.0, default_subsample))
-                
-                n_estimators = st.slider("Số cây (n_estimators):", 50, 500, int(default_n_estimators), 10, key="n_trees")
-                
-                # For LightGBM, allow unlimited depth option
-                if model_type == "LightGBM":
-                    unlimited_depth = st.checkbox(
-                        "🔓 Không giới hạn độ sâu (max_depth = -1)", 
-                        value=is_unlimited_depth,
-                        key="unlimited_depth",
-                        help="Trong LightGBM, max_depth=-1 cho phép cây phát triển không giới hạn. Có thể tăng hiệu suất nhưng cũng tăng nguy cơ overfitting."
-                    )
-                    if unlimited_depth:
-                        max_depth = -1
-                        st.info("💡 Độ sâu không giới hạn - cây sẽ phát triển dựa trên num_leaves")
-                    else:
-                        max_depth = st.slider("Độ sâu tối đa:", 3, 20, int(default_max_depth), 1, key="max_depth")
-                else:
-                    max_depth = st.slider("Độ sâu tối đa:", 3, 20, int(default_max_depth), 1, key="max_depth")
-                
-                learning_rate = st.slider("Learning rate:", 0.01, 0.3, float(default_learning_rate), 0.01, key="lr")
-                subsample = st.slider("Subsample:", 0.5, 1.0, float(default_subsample), 0.1, key="subsample")
-            
-            st.markdown("---")
-            
-            # Train button - sử dụng placeholder để tránh nhân đôi khi đang xử lý
-            train_button_placeholder = st.empty()
-            
-            if train_button_placeholder.button("🚀 Huấn Luyện Mô Hình", type="primary", key="train_model_btn", use_container_width=True):
-                # Xóa nút và thay bằng spinner
-                train_button_placeholder.empty()
-                
-                try:
-                    with st.spinner(f"Đang huấn luyện {model_type}..."):
-                        # Prepare data
-                        target_col = st.session_state.target_column
-                        features = st.session_state.selected_features
-                        
-                        X_train = st.session_state.train_data[features]
-                        y_train = st.session_state.train_data[target_col]
-                        
-                        # Use test data if available, otherwise split train data (fallback)
-                        if 'test_data' in st.session_state and st.session_state.test_data is not None:
-                            X_test = st.session_state.test_data[features]
-                            y_test = st.session_state.test_data[target_col]
-                        else:
-                            # Fallback if no test data (should not happen if flow is followed)
-                            from sklearn.model_selection import train_test_split
-                            X_train, X_test, y_train, y_test = train_test_split(
-                                X_train, y_train, test_size=0.2, random_state=42
-                            )
-                        
-                        # Collect parameters
-                        params = {}
-                        if model_type == "Logistic Regression":
-                            params['C'] = c_value
-                            params['max_iter'] = max_iter
-                        elif model_type == "Random Forest":
-                            params['n_estimators'] = n_estimators
-                            params['max_depth'] = max_depth
-                            params['min_samples_split'] = min_samples_split
-                        elif model_type in ["XGBoost", "LightGBM", "CatBoost", "Gradient Boosting"]:
-                            params['n_estimators'] = n_estimators
-                            params['max_depth'] = max_depth
-                            params['learning_rate'] = learning_rate
-                            params['subsample'] = subsample
-                        
-                        # Import backend
-                        from backend.models.trainer import train_model
-                        
-                        # Train model
-                        model, metrics = train_model(
-                            X_train, y_train, X_test, y_test, 
-                            model_type, params
-                        )
-                        
-                        # Save model info to session
-                        st.session_state.model = model
-                        st.session_state.model_metrics = metrics
-                        st.session_state.selected_model_name = model_type
-                        
-                        # Add to history
-                        import datetime
-                        history_entry = {
-                            'Model': model_type,
-                            'Accuracy': metrics['accuracy'],
-                            'Precision': metrics['precision'],
-                            'Recall': metrics['recall'],
-                            'F1-Score': metrics['f1'],
-                            'AUC': metrics['auc'],
-                            'Timestamp': datetime.datetime.now().strftime("%H:%M:%S"),
-                            'Params': str(params)
-                        }
-                        st.session_state.model_history.append(history_entry)
-                        
-                        # Auto-select the newly trained model
-                        st.session_state.selected_model_idx = len(st.session_state.model_history) - 1
-                        st.session_state.selected_model_timestamp = history_entry['Timestamp']
-                        
-                        st.success(f"✅ Đã huấn luyện {model_type} thành công!")
-                        st.balloons()
-                        st.rerun()
-                        
-                except Exception as e:
-                    st.error(f"❌ Lỗi khi huấn luyện mô hình: {str(e)}")
-                    import traceback
-                    with st.expander("Chi tiết lỗi"):
-                        st.code(traceback.format_exc())
-        
-        with col2:
-            st.markdown("#### 📋 Thông Tin Huấn Luyện")
-            
-            # Training info panel
+            # Hiển thị animation loading ở giữa màn hình với CSS spinner
             st.markdown("""
-            <div style="background-color: #262730; padding: 1.5rem; border-radius: 10px; margin-bottom: 1rem;">
-                <h4 style="margin-top: 0; color: #667eea;">💡 Hướng Dẫn</h4>
-                <ul style="margin-bottom: 0;">
-                    <li><strong>Logistic Regression</strong>: Nhanh, dễ giải thích, phù hợp với dữ liệu tuyến tính</li>
-                    <li><strong>Random Forest</strong>: Mạnh mẽ, chống overfitting tốt</li>
-                    <li><strong>XGBoost/LightGBM</strong>: Hiệu suất cao, thường cho kết quả tốt nhất</li>
-                    <li><strong>CatBoost</strong>: Tốt với biến phân loại, ít cần tiền xử lý</li>
-                </ul>
+            <style>
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+            .training-spinner {
+                width: 60px;
+                height: 60px;
+                border: 5px solid rgba(102, 126, 234, 0.2);
+                border-top: 5px solid #667eea;
+                border-radius: 50%;
+                animation: spin 1s linear infinite;
+                margin: 0 auto 1.5rem auto;
+            }
+            </style>
+            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3rem;">
+                <div class="training-spinner"></div>
+                <h3 style="color: #667eea; margin-bottom: 0.5rem;">Đang Huấn Luyện Mô Hình</h3>
+                <p style="color: rgba(255,255,255,0.7);">""" + model_type + """</p>
             </div>
             """, unsafe_allow_html=True)
             
-            # Current configuration summary - use selected_model_name if available
-            current_model_display = st.session_state.get('selected_model_name', None)
-            if current_model_display is None and st.session_state.model is not None:
-                current_model_display = st.session_state.get('model_type_select', 'Unknown')
+            progress_placeholder = st.empty()
+            progress_placeholder.info("⏳ Đang xử lý... vui lòng đợi")
             
-            if st.session_state.model is not None and current_model_display:
-                st.markdown("#### ✅ Mô Hình Hiện Tại")
+            try:
+                # Prepare data
+                target_col = st.session_state.target_column
+                features = st.session_state.selected_features
                 
-                st.markdown(f"""
-                <div style="background: linear-gradient(135deg, #1f2937 0%, #345f9c 100%); 
-                            padding: 1.5rem; border-radius: 10px;">
-                    <h3 style="margin: 0; color: white;">{current_model_display}</h3>
-                    <p style="margin: 0.5rem 0 0 0; color: rgba(255,255,255,0.9);">
-                        Đã huấn luyện với {len(st.session_state.selected_features)} features
-                    </p>
+                X_train = st.session_state.train_data[features]
+                y_train = st.session_state.train_data[target_col]
+                
+                # Use test data if available
+                if 'test_data' in st.session_state and st.session_state.test_data is not None:
+                    X_test = st.session_state.test_data[features]
+                    y_test = st.session_state.test_data[target_col]
+                else:
+                    from sklearn.model_selection import train_test_split
+                    X_train, X_test, y_train, y_test = train_test_split(
+                        X_train, y_train, test_size=0.2, random_state=42
+                    )
+                
+                # Import backend
+                from backend.models.trainer import train_model
+                
+                # Train model
+                model, metrics = train_model(
+                    X_train, y_train, X_test, y_test, 
+                    model_type, params
+                )
+                
+                # Save model info to session
+                st.session_state.model = model
+                st.session_state.model_metrics = metrics
+                st.session_state.selected_model_name = model_type
+                
+                # Add to history
+                import datetime
+                history_entry = {
+                    'Model': model_type,
+                    'Accuracy': metrics['accuracy'],
+                    'Precision': metrics['precision'],
+                    'Recall': metrics['recall'],
+                    'F1-Score': metrics['f1'],
+                    'AUC': metrics['auc'],
+                    'Timestamp': datetime.datetime.now().strftime("%H:%M:%S"),
+                    'Params': str(params)
+                }
+                st.session_state.model_history.append(history_entry)
+                
+                # Auto-select the newly trained model
+                st.session_state.selected_model_idx = len(st.session_state.model_history) - 1
+                st.session_state.selected_model_timestamp = history_entry['Timestamp']
+                
+                st.session_state._training_success = True
+                st.session_state._training_model_name = model_type
+                
+            except Exception as e:
+                st.session_state._training_error = str(e)
+                import traceback
+                st.session_state._training_traceback = traceback.format_exc()
+            
+            # Reset flag và rerun
+            st.session_state._training_in_progress = False
+            st.rerun()
+        
+        else:
+            # Khi không đang training - hiển thị form bình thường
+            col1, col2 = st.columns([1, 2])
+            
+            with col1:
+                # Hiển thị thông báo kết quả từ lần training trước
+                if st.session_state.get('_training_success', False):
+                    st.success(f"✅ Đã huấn luyện {st.session_state._training_model_name} thành công!")
+                    st.session_state._training_success = False
+                    del st.session_state._training_model_name
+                
+                if st.session_state.get('_training_error', None):
+                    st.error(f"❌ Lỗi khi huấn luyện mô hình: {st.session_state._training_error}")
+                    with st.expander("Chi tiết lỗi"):
+                        st.code(st.session_state._training_traceback)
+                    st.session_state._training_error = None
+                    st.session_state._training_traceback = None
+                
+                st.markdown("#### 1️⃣ Chọn Mô Hình")
+                
+                model_type = st.selectbox(
+                    "Loại mô hình:",
+                    [
+                        "Logistic Regression",
+                        "Random Forest",
+                        "XGBoost",
+                        "LightGBM",
+                        "CatBoost",
+                        "Gradient Boosting"
+                    ],
+                    key="model_type_select"
+                )
+                
+                st.markdown("---")
+                
+                st.markdown("#### 2️⃣ Dữ Liệu Huấn Luyện")
+                
+                st.info(f"📊 Tập Train: {len(st.session_state.train_data)} dòng")
+                if 'test_data' in st.session_state and st.session_state.test_data is not None:
+                    st.info(f"🧪 Tập Test: {len(st.session_state.test_data)} dòng")
+                
+                st.markdown("---")
+                
+                st.markdown("#### 3️⃣ Tham Số Mô Hình")
+                
+                # Get tuned params if available
+                tuned_params = st.session_state.get('best_tuned_params', {})
+                
+                # Check if we need to apply tuned params (clear widget keys to force new defaults)
+                if st.session_state.get('apply_tuned_params_flag', False):
+                    # Clear widget keys to reset to new defaults
+                    keys_to_clear = ['lr_c', 'lr_iter', 'n_trees', 'max_depth', 'lr', 'subsample', 'min_samples_split', 'unlimited_depth']
+                    for key in keys_to_clear:
+                        if key in st.session_state:
+                            del st.session_state[key]
+                    st.session_state.apply_tuned_params_flag = False
+                
+                # Model-specific parameters - collect params
+                params = {}
+                
+                if model_type == "Logistic Regression":
+                    default_c = tuned_params.get('C', 1.0)
+                    default_max_iter = tuned_params.get('max_iter', 200)
+                    # Clamp values to slider range
+                    default_c = max(0.001, min(10.0, default_c))
+                    default_max_iter = max(100, min(1000, default_max_iter))
+                    
+                    c_value = st.slider("C (Regularization):", 0.001, 10.0, float(default_c), 0.001, key="lr_c")
+                    max_iter = st.number_input("Max iterations:", 100, 1000, int(default_max_iter), key="lr_iter")
+                    params['C'] = c_value
+                    params['max_iter'] = max_iter
+                    
+                elif model_type == "Random Forest":
+                    default_n_estimators = tuned_params.get('n_estimators', 100)
+                    default_max_depth = tuned_params.get('max_depth', 10)
+                    default_min_samples_split = tuned_params.get('min_samples_split', 2)
+                    # Clamp values
+                    default_n_estimators = max(50, min(500, default_n_estimators))
+                    if default_max_depth is None:
+                        default_max_depth = 10
+                    default_max_depth = max(3, min(20, default_max_depth))
+                    default_min_samples_split = max(2, min(20, default_min_samples_split))
+                    
+                    n_estimators = st.slider("Số cây (n_estimators):", 50, 500, int(default_n_estimators), 10, key="n_trees")
+                    max_depth = st.slider("Độ sâu tối đa:", 3, 20, int(default_max_depth), 1, key="max_depth")
+                    min_samples_split = st.slider("Min samples split:", 2, 20, int(default_min_samples_split), 1, key="min_samples_split")
+                    params['n_estimators'] = n_estimators
+                    params['max_depth'] = max_depth
+                    params['min_samples_split'] = min_samples_split
+                    
+                elif model_type in ["XGBoost", "LightGBM", "CatBoost", "Gradient Boosting"]:
+                    default_n_estimators = tuned_params.get('n_estimators', tuned_params.get('iterations', 100))
+                    default_max_depth = tuned_params.get('max_depth', tuned_params.get('depth', 6))
+                    default_learning_rate = tuned_params.get('learning_rate', 0.1)
+                    default_subsample = tuned_params.get('subsample', 0.8)
+                    
+                    # Check if max_depth is unlimited (-1 or None)
+                    is_unlimited_depth = default_max_depth == -1 or default_max_depth is None
+                    
+                    # Clamp values
+                    default_n_estimators = max(50, min(500, default_n_estimators))
+                    if default_max_depth is None or default_max_depth == -1:
+                        default_max_depth = 6  # Default for slider display
+                    default_max_depth = max(3, min(20, default_max_depth))
+                    default_learning_rate = max(0.01, min(0.3, default_learning_rate))
+                    default_subsample = max(0.5, min(1.0, default_subsample))
+                    
+                    n_estimators = st.slider("Số cây (n_estimators):", 50, 500, int(default_n_estimators), 10, key="n_trees")
+                    
+                    # For LightGBM, allow unlimited depth option
+                    if model_type == "LightGBM":
+                        unlimited_depth = st.checkbox(
+                            "🔓 Không giới hạn độ sâu (max_depth = -1)", 
+                            value=is_unlimited_depth,
+                            key="unlimited_depth",
+                            help="Trong LightGBM, max_depth=-1 cho phép cây phát triển không giới hạn. Có thể tăng hiệu suất nhưng cũng tăng nguy cơ overfitting."
+                        )
+                        if unlimited_depth:
+                            max_depth = -1
+                            st.info("💡 Độ sâu không giới hạn - cây sẽ phát triển dựa trên num_leaves")
+                        else:
+                            max_depth = st.slider("Độ sâu tối đa:", 3, 20, int(default_max_depth), 1, key="max_depth")
+                    else:
+                        max_depth = st.slider("Độ sâu tối đa:", 3, 20, int(default_max_depth), 1, key="max_depth")
+                    
+                    learning_rate = st.slider("Learning rate:", 0.01, 0.3, float(default_learning_rate), 0.01, key="lr")
+                    subsample = st.slider("Subsample:", 0.5, 1.0, float(default_subsample), 0.1, key="subsample")
+                    params['n_estimators'] = n_estimators
+                    params['max_depth'] = max_depth
+                    params['learning_rate'] = learning_rate
+                    params['subsample'] = subsample
+                
+                st.markdown("---")
+                
+                # Train button - check flag immediately to prevent double render
+                if not st.session_state.get('_training_in_progress', False):
+                    if st.button("🚀 Huấn Luyện Mô Hình", type="primary", key="train_model_btn", use_container_width=True):
+                        # Lưu params vào session state và set flag
+                        st.session_state._training_model_type = model_type
+                        st.session_state._training_params = params
+                        st.session_state._training_in_progress = True
+                        st.rerun()
+            
+            with col2:
+                st.markdown("#### 📋 Thông Tin Huấn Luyện")
+                
+                # Training info panel
+                st.markdown("""
+                <div style="background-color: #262730; padding: 1.5rem; border-radius: 10px; margin-bottom: 1rem;">
+                    <h4 style="margin-top: 0; color: #667eea;">💡 Hướng Dẫn</h4>
+                    <ul style="margin-bottom: 0;">
+                        <li><strong>Logistic Regression</strong>: Nhanh, dễ giải thích, phù hợp với dữ liệu tuyến tính</li>
+                        <li><strong>Random Forest</strong>: Mạnh mẽ, chống overfitting tốt</li>
+                        <li><strong>XGBoost/LightGBM</strong>: Hiệu suất cao, thường cho kết quả tốt nhất</li>
+                        <li><strong>CatBoost</strong>: Tốt với biến phân loại, ít cần tiền xử lý</li>
+                    </ul>
                 </div>
                 """, unsafe_allow_html=True)
                 
-                st.markdown("<br>", unsafe_allow_html=True)
+                # Current configuration summary - use selected_model_name if available
+                current_model_display = st.session_state.get('selected_model_name', None)
+                if current_model_display is None and st.session_state.model is not None:
+                    current_model_display = st.session_state.get('model_type_select', 'Unknown')
                 
-                # Quick metrics
-                metrics = st.session_state.model_metrics
-                col1, col2, col3 = st.columns(3)
+                if st.session_state.model is not None and current_model_display:
+                    st.markdown("#### ✅ Mô Hình Hiện Tại")
+                    
+                    st.markdown(f"""
+                    <div style="background: linear-gradient(135deg, #1f2937 0%, #345f9c 100%); 
+                                padding: 1.5rem; border-radius: 10px;">
+                        <h3 style="margin: 0; color: white;">{current_model_display}</h3>
+                        <p style="margin: 0.5rem 0 0 0; color: rgba(255,255,255,0.9);">
+                            Đã huấn luyện với {len(st.session_state.selected_features)} features
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    
+                    # Quick metrics
+                    metrics = st.session_state.model_metrics
+                    mcol1, mcol2, mcol3 = st.columns(3)
+                    
+                    with mcol1:
+                        st.metric("Accuracy", f"{metrics['accuracy']:.3f}")
+                    with mcol2:
+                        st.metric("Precision", f"{metrics['precision']:.3f}")
+                    with mcol3:
+                        st.metric("AUC", f"{metrics['auc']:.3f}")
+                else:
+                    st.info("⏳ Chưa huấn luyện mô hình nào")
                 
-                with col1:
-                    st.metric("Accuracy", f"{metrics['accuracy']:.3f}")
-                with col2:
-                    st.metric("Precision", f"{metrics['precision']:.3f}")
-                with col3:
-                    st.metric("AUC", f"{metrics['auc']:.3f}")
-            else:
-                st.info("⏳ Chưa huấn luyện mô hình nào")
-            
-            # Additional options
-            st.markdown("#### ⚙️ Tùy Chọn Nâng Cao")
-            
-            with st.expander("Cross-Validation"):
-                cv_folds = st.slider("Số folds:", 3, 10, 5, key="cv_folds")
-                if st.button("🔄 Chạy Cross-Validation", key="run_cv"):
-                    try:
-                        with st.spinner(f"Đang chạy Cross-Validation với {cv_folds} folds..."):
-                            # Prepare data
-                            target_col = st.session_state.target_column
-                            features = st.session_state.selected_features
-                            
-                            X = st.session_state.train_data[features]
-                            y = st.session_state.train_data[target_col]
-                            
-                            # Get current model type from selectbox
-                            current_model_type = st.session_state.get('model_type_select', 'Logistic Regression')
-                            
-                            # Collect parameters based on model type
-                            params = {}
-                            if current_model_type == "Logistic Regression":
-                                params['C'] = st.session_state.get('lr_c', 1.0)
-                                params['max_iter'] = st.session_state.get('lr_iter', 200)
-                            elif current_model_type == "Random Forest":
-                                params['n_estimators'] = st.session_state.get('n_trees', 100)
-                                params['max_depth'] = st.session_state.get('max_depth', 10)
-                            elif current_model_type in ["XGBoost", "LightGBM", "CatBoost", "Gradient Boosting"]:
-                                params['n_estimators'] = st.session_state.get('n_trees', 100)
-                                params['max_depth'] = st.session_state.get('max_depth', 6)
-                                params['learning_rate'] = st.session_state.get('lr', 0.1)
-                                params['subsample'] = st.session_state.get('subsample', 0.8)
-                            
-                            # Import backend
-                            from backend.models.trainer import cross_validate_model
-                            
-                            # Run cross-validation
-                            cv_results = cross_validate_model(X, y, current_model_type, params, cv_folds)
-                            
-                            # Save to session state
-                            st.session_state.cv_results = cv_results
-                            
-                            # Display results
-                            st.success(f"✅ Cross-Validation hoàn thành!")
-                            
-                            # Show metrics
-                            cv_col1, cv_col2 = st.columns(2)
-                            with cv_col1:
-                                st.metric("AUC", f"{cv_results['auc']['mean']:.3f} (+/- {cv_results['auc']['std']:.3f})")
-                                st.metric("Accuracy", f"{cv_results['accuracy']['mean']:.3f} (+/- {cv_results['accuracy']['std']:.3f})")
-                            with cv_col2:
-                                st.metric("F1-Score", f"{cv_results['f1']['mean']:.3f} (+/- {cv_results['f1']['std']:.3f})")
-                                st.metric("Precision", f"{cv_results['precision']['mean']:.3f} (+/- {cv_results['precision']['std']:.3f})")
-                            
-                            # Show fold details (no nested expander)
-                            st.markdown("##### 📋 Chi tiết từng Fold")
-                            fold_df = pd.DataFrame({
-                                'Fold': [f"Fold {i+1}" for i in range(cv_folds)],
-                                'Accuracy': cv_results['accuracy']['scores'],
-                                'Precision': cv_results['precision']['scores'],
-                                'Recall': cv_results['recall']['scores'],
-                                'F1': cv_results['f1']['scores'],
-                                'AUC': cv_results['auc']['scores']
-                            })
-                            st.dataframe(fold_df.style.format({
-                                'Accuracy': '{:.3f}',
-                                'Precision': '{:.3f}',
-                                'Recall': '{:.3f}',
-                                'F1': '{:.3f}',
-                                'AUC': '{:.3f}'
-                            }).background_gradient(subset=['AUC'], cmap='RdYlGn'), width='stretch')
-                    except Exception as e:
-                        st.error(f"❌ Lỗi khi chạy Cross-Validation: {str(e)}")
-                        import traceback
-                        st.code(traceback.format_exc())
-            
-            with st.expander("Hyperparameter Tuning"):
-                tuning_method = st.selectbox(
-                    "Phương pháp:",
-                    ["Grid Search", "Random Search", "Bayesian Optimization"],
-                    key="tuning_method"
-                )
-                tuning_cv_folds = st.slider("Số folds cho CV:", 3, 10, 5, key="tuning_cv_folds")
+                # Additional options
+                st.markdown("#### ⚙️ Tùy Chọn Nâng Cao")
                 
-                if st.button("🔍 Tìm Tham Số Tốt Nhất", key="tune_params"):
-                    try:
-                        with st.spinner(f"Đang chạy {tuning_method}... (có thể mất vài phút)"):
-                            # Prepare data
-                            target_col = st.session_state.target_column
-                            features = st.session_state.selected_features
+                with st.expander("Cross-Validation"):
+                    cv_folds = st.slider("Số folds:", 3, 10, 5, key="cv_folds")
+                    if st.button("🔄 Chạy Cross-Validation", key="run_cv"):
+                        try:
+                            with st.spinner(f"Đang chạy Cross-Validation với {cv_folds} folds..."):
+                                # Prepare data
+                                target_col = st.session_state.target_column
+                                features = st.session_state.selected_features
+                                
+                                X = st.session_state.train_data[features]
+                                y = st.session_state.train_data[target_col]
+                                
+                                # Get current model type from selectbox
+                                current_model_type = st.session_state.get('model_type_select', 'Logistic Regression')
+                                
+                                # Collect parameters based on model type
+                                params = {}
+                                if current_model_type == "Logistic Regression":
+                                    params['C'] = st.session_state.get('lr_c', 1.0)
+                                    params['max_iter'] = st.session_state.get('lr_iter', 200)
+                                elif current_model_type == "Random Forest":
+                                    params['n_estimators'] = st.session_state.get('n_trees', 100)
+                                    params['max_depth'] = st.session_state.get('max_depth', 10)
+                                elif current_model_type in ["XGBoost", "LightGBM", "CatBoost", "Gradient Boosting"]:
+                                    params['n_estimators'] = st.session_state.get('n_trees', 100)
+                                    params['max_depth'] = st.session_state.get('max_depth', 6)
+                                    params['learning_rate'] = st.session_state.get('lr', 0.1)
+                                    params['subsample'] = st.session_state.get('subsample', 0.8)
+                                
+                                # Import backend
+                                from backend.models.trainer import cross_validate_model
+                                
+                                # Run cross-validation
+                                cv_results = cross_validate_model(X, y, current_model_type, params, cv_folds)
+                                
+                                # Save to session state
+                                st.session_state.cv_results = cv_results
+                                
+                                # Display results
+                                st.success(f"✅ Cross-Validation hoàn thành!")
+                                
+                                # Show metrics
+                                cv_col1, cv_col2 = st.columns(2)
+                                with cv_col1:
+                                    st.metric("AUC", f"{cv_results['auc']['mean']:.3f} (+/- {cv_results['auc']['std']:.3f})")
+                                    st.metric("Accuracy", f"{cv_results['accuracy']['mean']:.3f} (+/- {cv_results['accuracy']['std']:.3f})")
+                                with cv_col2:
+                                    st.metric("F1-Score", f"{cv_results['f1']['mean']:.3f} (+/- {cv_results['f1']['std']:.3f})")
+                                    st.metric("Precision", f"{cv_results['precision']['mean']:.3f} (+/- {cv_results['precision']['std']:.3f})")
+                                
+                                # Show fold details (no nested expander)
+                                st.markdown("##### 📋 Chi tiết từng Fold")
+                                fold_df = pd.DataFrame({
+                                    'Fold': [f"Fold {i+1}" for i in range(cv_folds)],
+                                    'Accuracy': cv_results['accuracy']['scores'],
+                                    'Precision': cv_results['precision']['scores'],
+                                    'Recall': cv_results['recall']['scores'],
+                                    'F1': cv_results['f1']['scores'],
+                                    'AUC': cv_results['auc']['scores']
+                                })
+                                st.dataframe(fold_df.style.format({
+                                    'Accuracy': '{:.3f}',
+                                    'Precision': '{:.3f}',
+                                    'Recall': '{:.3f}',
+                                    'F1': '{:.3f}',
+                                    'AUC': '{:.3f}'
+                                }).background_gradient(subset=['AUC'], cmap='RdYlGn'), width='stretch')
+                        except Exception as e:
+                            st.error(f"❌ Lỗi khi chạy Cross-Validation: {str(e)}")
+                            import traceback
+                            st.code(traceback.format_exc())
+                
+                with st.expander("Hyperparameter Tuning"):
+                    tuning_method = st.selectbox(
+                        "Phương pháp:",
+                        ["Grid Search", "Random Search", "Bayesian Optimization"],
+                        key="tuning_method"
+                    )
+                    tuning_cv_folds = st.slider("Số folds cho CV:", 3, 10, 5, key="tuning_cv_folds")
+                    
+                    if st.button("🔍 Tìm Tham Số Tốt Nhất", key="tune_params"):
+                        try:
+                            with st.spinner(f"Đang chạy {tuning_method}... (có thể mất vài phút)"):
+                                # Prepare data
+                                target_col = st.session_state.target_column
+                                features = st.session_state.selected_features
+                                
+                                X = st.session_state.train_data[features]
+                                y = st.session_state.train_data[target_col]
+                                
+                                # Get current model type from selectbox
+                                current_model_type = st.session_state.get('model_type_select', 'Logistic Regression')
+                                
+                                # Import backend
+                                from backend.models.trainer import hyperparameter_tuning
+                                
+                                # Run hyperparameter tuning
+                                tuning_results = hyperparameter_tuning(
+                                    X, y, current_model_type, tuning_method, tuning_cv_folds
+                                )
+                                
+                                # Save to session state and rerun to display results
+                                st.session_state.tuning_results = tuning_results
                             
-                            X = st.session_state.train_data[features]
-                            y = st.session_state.train_data[target_col]
-                            
-                            # Get current model type from selectbox
-                            current_model_type = st.session_state.get('model_type_select', 'Logistic Regression')
-                            
-                            # Import backend
-                            from backend.models.trainer import hyperparameter_tuning
-                            
-                            # Run hyperparameter tuning
-                            tuning_results = hyperparameter_tuning(
-                                X, y, current_model_type, tuning_method, tuning_cv_folds
-                            )
-                            
-                            # Save to session state and rerun to display results
-                            st.session_state.tuning_results = tuning_results
+                            st.rerun()
+                                
+                        except Exception as e:
+                            st.error(f"❌ Lỗi khi chạy Hyperparameter Tuning: {str(e)}")
+                            import traceback
+                            st.code(traceback.format_exc())
+                    
+                    # Display saved tuning results if exists
+                    if 'tuning_results' in st.session_state and st.session_state.tuning_results is not None:
+                        tuning_results = st.session_state.tuning_results
                         
-                        st.rerun()
+                        st.success(f"✅ Đã tìm được tham số tốt nhất!")
+                        
+                        st.markdown("##### 🏆 Tham Số Tốt Nhất")
+                        
+                        # Format best params for display with explanations
+                        best_params_display = tuning_results['best_params'].copy()
+                        current_model_type = st.session_state.get('model_type_select', 'Unknown')
+                        
+                        # Add explanation for special values
+                        if 'max_depth' in best_params_display and best_params_display['max_depth'] == -1:
+                            st.info(f"💡 **Lưu ý:** `max_depth = -1` trong {current_model_type} có nghĩa là **không giới hạn độ sâu** (cây sẽ phát triển cho đến khi các leaf nodes đều pure hoặc chứa ít hơn min_samples_split samples). Khi áp dụng, slider sẽ được đặt về giá trị mặc định (6).")
+                        
+                        st.json(best_params_display)
+                        
+                        st.metric("Best AUC Score", f"{tuning_results['best_score']:.4f}")
+                        st.info(f"📊 Đã thử {tuning_results['total_fits']} tổ hợp tham số")
+                        
+                        # Show top 5 results (no nested expander)
+                        st.markdown("##### 🔝 Top 5 Tổ Hợp Tham Số Tốt Nhất")
+                        for i, result in enumerate(tuning_results['top_results']):
+                            st.markdown(f"**#{i+1}** - AUC: {result['mean_test_score']:.4f} (+/- {result['std_test_score']:.4f})")
+                            st.code(str(result['params']))
+                        
+                        # Button to apply best params
+                        if st.button("✅ Áp Dụng Tham Số Tốt Nhất", key="apply_best_params"):
+                            best_params = tuning_results['best_params']
+                            st.session_state.best_tuned_params = best_params
                             
-                    except Exception as e:
-                        st.error(f"❌ Lỗi khi chạy Hyperparameter Tuning: {str(e)}")
-                        import traceback
-                        st.code(traceback.format_exc())
-                
-                # Display saved tuning results if exists
-                if 'tuning_results' in st.session_state and st.session_state.tuning_results is not None:
-                    tuning_results = st.session_state.tuning_results
-                    
-                    st.success(f"✅ Đã tìm được tham số tốt nhất!")
-                    
-                    st.markdown("##### 🏆 Tham Số Tốt Nhất")
-                    
-                    # Format best params for display with explanations
-                    best_params_display = tuning_results['best_params'].copy()
-                    current_model_type = st.session_state.get('model_type_select', 'Unknown')
-                    
-                    # Add explanation for special values
-                    if 'max_depth' in best_params_display and best_params_display['max_depth'] == -1:
-                        st.info(f"💡 **Lưu ý:** `max_depth = -1` trong {current_model_type} có nghĩa là **không giới hạn độ sâu** (cây sẽ phát triển cho đến khi các leaf nodes đều pure hoặc chứa ít hơn min_samples_split samples). Khi áp dụng, slider sẽ được đặt về giá trị mặc định (6).")
-                    
-                    st.json(best_params_display)
-                    
-                    st.metric("Best AUC Score", f"{tuning_results['best_score']:.4f}")
-                    st.info(f"📊 Đã thử {tuning_results['total_fits']} tổ hợp tham số")
-                    
-                    # Show top 5 results (no nested expander)
-                    st.markdown("##### 🔝 Top 5 Tổ Hợp Tham Số Tốt Nhất")
-                    for i, result in enumerate(tuning_results['top_results']):
-                        st.markdown(f"**#{i+1}** - AUC: {result['mean_test_score']:.4f} (+/- {result['std_test_score']:.4f})")
-                        st.code(str(result['params']))
-                    
-                    # Button to apply best params
-                    if st.button("✅ Áp Dụng Tham Số Tốt Nhất", key="apply_best_params"):
-                        best_params = tuning_results['best_params']
-                        st.session_state.best_tuned_params = best_params
-                        
-                        # Set flag to clear widget keys on next rerun
-                        st.session_state.apply_tuned_params_flag = True
-                        
-                        # Clear tuning results after applying
-                        st.session_state.tuning_results = None
-                        st.success("✅ Đã áp dụng tham số tốt nhất!")
-                        st.rerun()
+                            # Set flag to clear widget keys on next rerun
+                            st.session_state.apply_tuned_params_flag = True
+                            
+                            # Clear tuning results after applying
+                            st.session_state.tuning_results = None
+                            st.success("✅ Đã áp dụng tham số tốt nhất!")
+                            st.rerun()
     
     # Tab 2: Evaluation Results
     with tab2:
