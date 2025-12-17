@@ -146,7 +146,7 @@ def render():
             col1, col2, col3 = st.columns([1, 2, 1])
             with col2:
                 button_placeholder = st.empty()
-                clicked = button_placeholder.button("🎯 Dự Đoán Điểm Tín Dụng", key="predict_btn", type="primary", use_container_width=True)
+                clicked = button_placeholder.button("🎯 Dự Đoán Điểm Tín Dụng", key="predict_btn", type="primary", width='stretch')
         
         # Xử lý bên ngoài form container
         if clicked:
@@ -201,132 +201,139 @@ def render():
         result = st.session_state.prediction_result
         contributions = st.session_state.get('prediction_contributions', [])
         
-        # Main result display
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.markdown(f"""
-            <div style="background: linear-gradient(135deg, #1f2937 0%, #345f9c 100%); 
-                        padding: 2rem; border-radius: 15px; text-align: center;">
-                <h2 style="margin: 0; color: white; font-size: 3rem;">{result['credit_score']}</h2>
-                <p style="margin: 0.5rem 0 0 0; color: rgba(255,255,255,0.9); font-size: 1.2rem;">
-                    Điểm Tín Dụng
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col2:
-            risk_color = result['risk_color']
-            st.markdown(f"""
-            <div style="background-color: #262730; padding: 2rem; border-radius: 15px; 
-                        text-align: center; border: 3px solid {risk_color};">
-                <h2 style="margin: 0; color: {risk_color}; font-size: 2.5rem;">{result['risk_label_vi']}</h2>
-                <p style="margin: 0.5rem 0 0 0; color: #aaa; font-size: 1.2rem;">
-                    Mức Độ Rủi Ro
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col3:
-            st.markdown(f"""
-            <div style="background-color: #262730; padding: 2rem; border-radius: 15px; text-align: center;">
-                <h2 style="margin: 0; color: white; font-size: 2.5rem;">{result['probability']*100:.1f}%</h2>
-                <p style="margin: 0.5rem 0 0 0; color: #aaa; font-size: 1.2rem;">
-                    Xác Suất Vỡ Nợ
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        st.markdown("---")
-        
-        # Prediction class
+        # Combined Credit Assessment Card - Compact Design
         pred_class = result['prediction']
+        score = result['credit_score']
+        probability = result['probability'] * 100
+        risk_label = result['risk_label_vi']
+        
+        # Determine score color and status
+        if score >= 750:
+            score_color = "#10b981"
+            score_label = "Xuất sắc"
+        elif score >= 650:
+            score_color = "#22c55e"
+            score_label = "Tốt"
+        elif score >= 500:
+            score_color = "#f59e0b"
+            score_label = "Trung bình"
+        else:
+            score_color = "#ef4444"
+            score_label = "Rất kém"
+        
+        status_bg = "#2d5016" if pred_class == 0 else "#5c1616"
+        status_text = "✅ Đủ điều kiện vay" if pred_class == 0 else "⚠️ Cần xem xét kỹ"
+        score_bg_color = f"{score_color}20"
+        prob_color = "#ef4444" if probability > 50 else "#f59e0b" if probability > 30 else "#22c55e"
+        
+        # Full-width Credit Assessment Card with embedded gauge
         st.markdown(f"""
-        <div style="background-color: {'#2d5016' if pred_class == 0 else '#5c1616'}; 
-                    padding: 1rem; border-radius: 8px; text-align: center; margin-bottom: 1rem;">
-            <h3 style="margin: 0; color: white;">
-                {'✅ Khách hàng TỐT - Đủ điều kiện vay' if pred_class == 0 else '⚠️ Khách hàng RỦI RO - Cần xem xét kỹ'}
-            </h3>
+        <div style="background: linear-gradient(135deg, #1f2937 0%, #0f172a 100%); 
+                    padding: 1.5rem; border-radius: 16px; 
+                    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3); margin-bottom: 1rem;">
+            <div style="background: {status_bg}; padding: 0.6rem 1rem; border-radius: 10px; text-align: center; margin-bottom: 1rem;">
+                <span style="color: white; font-weight: 600; font-size: 1rem;">{status_text}</span>
+            </div>
         </div>
         """, unsafe_allow_html=True)
         
-        # Credit score gauge
-        st.markdown("#### 📊 Thang Điểm Tín Dụng")
+        # Three-column layout inside the card area
+        col_score, col_gauge, col_prob = st.columns([1, 1.5, 1])
         
-        fig = go.Figure(go.Indicator(
-            mode="gauge+number+delta",
-            value=result['credit_score'],
-            domain={'x': [0, 1], 'y': [0, 1]},
-            title={'text': "Credit Score", 'font': {'size': 24, 'color': 'white'}},
-            delta={'reference': 650, 'increasing': {'color': "green"}},
-            gauge={
-                'axis': {'range': [300, 850], 'tickwidth': 1, 'tickcolor': "white"},
-                'bar': {'color': "lightblue"},
-                'bgcolor': "white",
-                'borderwidth': 2,
-                'bordercolor': "gray",
-                'steps': [
-                    {'range': [300, 500], 'color': '#ff4444'},
-                    {'range': [500, 650], 'color': '#ffaa00'},
-                    {'range': [650, 750], 'color': '#44ff44'},
-                    {'range': [750, 850], 'color': '#00ff00'}
-                ],
-                'threshold': {
-                    'line': {'color': "red", 'width': 4},
-                    'thickness': 0.75,
-                    'value': 650
-                }
-            }
-        ))
-        
-        fig.update_layout(
-            template="plotly_dark",
-            height=400,
-            font={'color': "white", 'family': "Arial"}
-        )
-        
-        st.plotly_chart(fig, width='stretch')
-        
-        # Score interpretation
-        st.markdown("#### 📖 Giải Thích Điểm Số")
-        
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            interpretation = result['score_interpretation']
-            description = result['score_description']
-            
-            if result['credit_score'] >= 750:
-                emoji = "🌟"
-                recommendation = "Đủ điều kiện cho các sản phẩm tín dụng với lãi suất ưu đãi"
-            elif result['credit_score'] >= 650:
-                emoji = "✅"
-                recommendation = "Đủ điều kiện cho hầu hết các sản phẩm tín dụng"
-            elif result['credit_score'] >= 500:
-                emoji = "⚠️"
-                recommendation = "Cần xem xét kỹ các điều kiện bổ sung"
-            else:
-                emoji = "❌"
-                recommendation = "Không khuyến nghị phê duyệt hoặc cần tài sản thế chấp"
-            
+        with col_score:
             st.markdown(f"""
-            <div style="background-color: #262730; padding: 1.5rem; border-radius: 10px; margin-bottom: 1rem;">
-                <h4 style="margin-top: 0; color: #667eea;">Đánh Giá</h4>
-                <p style="margin-bottom: 0.5rem; font-size: 1.1rem;">{emoji} <strong>{interpretation}</strong> - {description}</p>
-                <p style="margin-bottom: 0; color: #aaa;">💡 {recommendation}</p>
+            <div style="background: linear-gradient(135deg, #1f2937 0%, #0f172a 100%); 
+                        padding: 1.5rem; border-radius: 12px; text-align: center; height: 200px;
+                        display: flex; flex-direction: column; justify-content: center;
+                        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);">
+                <div style="font-size: 3.5rem; font-weight: 800; color: {score_color}; line-height: 1;">{score}</div>
+                <div style="color: #94a3b8; font-size: 1rem; margin-top: 0.3rem;">điểm tín dụng</div>
+                <div style="display: inline-block; background: {score_bg_color}; color: {score_color}; 
+                            padding: 0.4rem 1rem; border-radius: 15px; font-size: 0.9rem; font-weight: 600; margin-top: 0.5rem;">
+                    {score_label}
+                </div>
             </div>
             """, unsafe_allow_html=True)
         
-        with col2:
-            st.markdown("**📊 So Sánh Với Trung Bình**")
-            avg_score = 650
-            diff = result['credit_score'] - avg_score
+        with col_gauge:
+            fig = go.Figure(go.Indicator(
+                mode="gauge",
+                value=result['credit_score'],
+                domain={'x': [0, 1], 'y': [0, 1]},
+                gauge={
+                    'axis': {
+                        'range': [300, 850], 
+                        'tickwidth': 1, 
+                        'tickcolor': "#475569",
+                        'tickfont': {'color': '#94a3b8', 'size': 13},
+                        'tickmode': 'array',
+                        'tickvals': [300, 500, 650, 750, 850],
+                    },
+                    'bar': {'color': score_color, 'thickness': 0.3},
+                    'bgcolor': "#1e293b",
+                    'borderwidth': 0,
+                    'steps': [
+                        {'range': [300, 500], 'color': 'rgba(239, 68, 68, 0.15)'},
+                        {'range': [500, 650], 'color': 'rgba(245, 158, 11, 0.15)'},
+                        {'range': [650, 750], 'color': 'rgba(34, 197, 94, 0.15)'},
+                        {'range': [750, 850], 'color': 'rgba(16, 185, 129, 0.18)'}
+                    ],
+                    'threshold': {
+                        'line': {'color': "#a5b4fc", 'width': 3},
+                        'thickness': 0.85,
+                        'value': result['credit_score']
+                    }
+                }
+            ))
             
-            st.metric(
-                "Điểm trung bình",
-                avg_score,
-                f"{diff:+d} điểm"
+            fig.update_layout(
+                template="plotly_dark",
+                height=200,
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                font={'color': "#e2e8f0", 'family': "Inter, Arial, sans-serif"},
+                margin=dict(l=20, r=20, t=40, b=10)
             )
+            
+            st.plotly_chart(fig, width='stretch')
+        
+        with col_prob:
+            st.markdown(f"""
+            <div style="background: linear-gradient(135deg, #1f2937 0%, #0f172a 100%); 
+                        padding: 1.5rem; border-radius: 12px; text-align: center; height: 200px;
+                        display: flex; flex-direction: column; justify-content: center;
+                        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);">
+                <div style="font-size: 3rem; font-weight: 700; color: {prob_color}; line-height: 1;">{probability:.1f}%</div>
+                <div style="color: #94a3b8; font-size: 1rem; margin-top: 0.3rem;">xác suất vỡ nợ</div>
+                <div style="display: inline-block; background: {result['risk_color']}20; color: {result['risk_color']}; 
+                            padding: 0.4rem 1rem; border-radius: 15px; font-size: 0.9rem; font-weight: 600; margin-top: 0.5rem;">
+                    {risk_label}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Legend row
+        st.markdown("""
+        <div style="display: flex; justify-content: center; gap: 2.5rem; font-size: 0.9rem; 
+                    padding: 1rem; background: rgba(30, 41, 59, 0.5); border-radius: 10px; margin-top: 0.5rem;">
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span style="width: 10px; height: 10px; border-radius: 50%; background: #ef4444;"></span>
+                <span style="color: #94a3b8;">300-500: Kém</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span style="width: 10px; height: 10px; border-radius: 50%; background: #f59e0b;"></span>
+                <span style="color: #94a3b8;">500-650: TB</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span style="width: 10px; height: 10px; border-radius: 50%; background: #22c55e;"></span>
+                <span style="color: #94a3b8;">650-750: Tốt</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span style="width: 10px; height: 10px; border-radius: 50%; background: #10b981;"></span>
+                <span style="color: #94a3b8;">750-850: Xuất sắc</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
         
         st.markdown("---")
         
@@ -429,8 +436,8 @@ def render():
         
         with col1:
             st.markdown("---")
-            if st.button("🤖 Tạo Gợi Ý Chi Tiết Từ AI", width='stretch', type="primary"):
-                with st.spinner("AI đang phân tích và tạo gợi ý..."):
+            if st.button("✨ Tạo Gợi Ý Chi Tiết Từ AI", width='stretch', type="primary"):
+                with st.spinner("✨ AI đang phân tích và tạo gợi ý..."):
                     # Get model name
                     model_name = st.session_state.get('selected_model_name', 'Unknown')
                     

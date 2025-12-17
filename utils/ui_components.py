@@ -80,20 +80,24 @@ def load_custom_css():
             background: linear-gradient(135deg, #1f2937 0%, #345f9c 100%);
             color: white;
             border: none;
-            border-radius: 5px;
-            padding: 0.5rem 2rem;
+            border-radius: 6px;
+            padding: 0.5rem 1rem;
             font-weight: 600;
             transition: all 0.3s ease;
+            min-height: auto;
         }
         
         .stButton > button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
+            transform: translateY(-1px);
+            box-shadow: 0 3px 8px rgba(102, 126, 234, 0.4);
+            background: linear-gradient(135deg, #2d3a4f 0%, #4a7bc8 100%);
         }
         
         /* Sidebar styling */
         [data-testid="stSidebar"] {
             background-color: #1a1d24;
+            min-width: 310px;
+            max-width: 310px;
         }
         
         [data-testid="stSidebar"] .stRadio > label {
@@ -179,6 +183,27 @@ def load_custom_css():
         .js-plotly-plot {
             border-radius: 10px;
             overflow: hidden;
+        }
+        
+        /* Popover buttons - Quick Start Guide */
+        div[data-testid="stPopover"] > button {
+            padding: 1.5rem 1rem !important;
+            min-height: 100px !important;
+            font-size: 1.1rem !important;
+            font-weight: 600 !important;
+            background: linear-gradient(135deg, #1f2937 0%, #345f9c 100%) !important;
+            border: none !important;
+            border-radius: 12px !important;
+            width: 100% !important;
+        }
+        div[data-testid="stPopover"] > button:hover {
+            background: linear-gradient(135deg, #2d3a4f 0%, #4a7bc8 100%) !important;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+        div[data-testid="stPopover"] > button > div {
+            flex-direction: column !important;
+            gap: 0.5rem !important;
         }
     </style>
     """, unsafe_allow_html=True)

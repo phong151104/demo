@@ -13,7 +13,7 @@ def render():
     """Render trang huấn luyện mô hình"""
     init_session_state()
     
-    st.markdown("## 🤖 Huấn Luyện Mô Hình")
+    st.markdown("## 🧠 Huấn Luyện Mô Hình")
     st.markdown("Chọn và cấu hình mô hình Machine Learning để dự đoán điểm tín dụng.")
     
     # Check prerequisites
@@ -165,6 +165,11 @@ def render():
                     st.session_state._training_error = None
                     st.session_state._training_traceback = None
                 
+                # Show success message for applied best params
+                if st.session_state.get('_params_applied_success', False):
+                    st.success("✅ Đã áp dụng tham số tốt nhất! Bạn có thể huấn luyện lại mô hình.")
+                    st.session_state._params_applied_success = False
+                
                 st.markdown("#### 1️⃣ Chọn Mô Hình")
                 
                 model_type = st.selectbox(
@@ -192,30 +197,57 @@ def render():
                 
                 st.markdown("#### 3️⃣ Tham Số Mô Hình")
                 
+                # Show applied params notification
+                if st.session_state.get('best_tuned_params') and st.session_state.get('_params_applied_success', False):
+                    applied_params = st.session_state.best_tuned_params
+                    params_str = ", ".join([f"**{k}**: `{v}`" for k, v in applied_params.items()])
+                    st.success(f"✅ Đã áp dụng tham số tốt nhất: {params_str}")
+                    st.session_state._params_applied_success = False
+                
                 # Get tuned params if available
                 tuned_params = st.session_state.get('best_tuned_params', {})
                 
-                # Check if we need to apply tuned params (clear widget keys to force new defaults)
+                # Check if we need to apply tuned params - SET widget keys DIRECTLY
                 if st.session_state.get('apply_tuned_params_flag', False):
-                    # Clear widget keys to reset to new defaults
-                    keys_to_clear = ['lr_c', 'lr_iter', 'n_trees', 'max_depth', 'lr', 'subsample', 'min_samples_split', 'unlimited_depth']
-                    for key in keys_to_clear:
-                        if key in st.session_state:
-                            del st.session_state[key]
+                    # For Logistic Regression
+                    if 'C' in tuned_params:
+                        c_val = max(0.001, min(10.0, tuned_params['C']))
+                        st.session_state.lr_c = c_val
+                    if 'max_iter' in tuned_params:
+                        iter_val = max(100, min(1000, tuned_params['max_iter']))
+                        st.session_state.lr_iter = iter_val
+                    # For tree-based models
+                    if 'n_estimators' in tuned_params:
+                        st.session_state.n_trees = max(50, min(500, tuned_params['n_estimators']))
+                    if 'max_depth' in tuned_params:
+                        depth = tuned_params['max_depth']
+                        if depth == -1 or depth is None:
+                            st.session_state.unlimited_depth = True
+                        else:
+                            st.session_state.max_depth = max(3, min(20, depth))
+                            st.session_state.unlimited_depth = False
+                    if 'learning_rate' in tuned_params:
+                        st.session_state.lr = max(0.01, min(0.3, tuned_params['learning_rate']))
+                    if 'subsample' in tuned_params:
+                        st.session_state.subsample = max(0.5, min(1.0, tuned_params['subsample']))
+                    if 'min_samples_split' in tuned_params:
+                        st.session_state.min_samples_split = max(2, min(20, tuned_params['min_samples_split']))
+                    
                     st.session_state.apply_tuned_params_flag = False
+                    st.session_state._params_applied_success = True
                 
                 # Model-specific parameters - collect params
                 params = {}
                 
                 if model_type == "Logistic Regression":
-                    default_c = tuned_params.get('C', 1.0)
-                    default_max_iter = tuned_params.get('max_iter', 200)
-                    # Clamp values to slider range
-                    default_c = max(0.001, min(10.0, default_c))
-                    default_max_iter = max(100, min(1000, default_max_iter))
+                    # Only set default if key not in session_state (avoids Streamlit warning)
+                    if 'lr_c' not in st.session_state:
+                        st.session_state.lr_c = max(0.001, min(10.0, tuned_params.get('C', 1.0)))
+                    if 'lr_iter' not in st.session_state:
+                        st.session_state.lr_iter = max(100, min(1000, tuned_params.get('max_iter', 200)))
                     
-                    c_value = st.slider("C (Regularization):", 0.001, 10.0, float(default_c), 0.001, key="lr_c")
-                    max_iter = st.number_input("Max iterations:", 100, 1000, int(default_max_iter), key="lr_iter")
+                    c_value = st.slider("C (Regularization):", 0.001, 10.0, step=0.001, key="lr_c")
+                    max_iter = st.number_input("Max iterations:", 100, 1000, key="lr_iter")
                     params['C'] = c_value
                     params['max_iter'] = max_iter
                     
@@ -283,7 +315,7 @@ def render():
                 
                 # Train button - check flag immediately to prevent double render
                 if not st.session_state.get('_training_in_progress', False):
-                    if st.button("🚀 Huấn Luyện Mô Hình", type="primary", key="train_model_btn", use_container_width=True):
+                    if st.button("🚀 Huấn Luyện Mô Hình", type="primary", key="train_model_btn", width='stretch'):
                         # Lưu params vào session state và set flag
                         st.session_state._training_model_type = model_type
                         st.session_state._training_params = params

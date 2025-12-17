@@ -65,7 +65,7 @@ with st.sidebar:
     st.markdown("""
     <div style='text-align: left; padding: 1rem 0;'>
         <h2 style='margin: 0; color: #667eea; font-weight: 600;'>
-            <span style='font-size: 1.8rem;'>▣</span> Credit Scoring
+            <span style='font-size: 1.8rem;'>🏦</span> Credit Scoring
         </h2>
         <p style='margin: 0.3rem 0 0 0; color: #aaa; font-size: 0.85rem;'>Risk Assessment Platform</p>
     </div>
@@ -76,11 +76,22 @@ with st.sidebar:
     # Menu điều hướng
     st.markdown("### NAVIGATION")
     
+    # Navigation options
+    nav_options = ["🏠 Dashboard", "📊 Data Upload & Analysis", "⚙️ Feature Engineering", 
+                   "🧠 Model Training", "💡 Model Explanation", "🎯 Prediction & Advisory"]
+    
+    # Get default index from session state if set
+    default_index = 0
+    if 'nav_page' in st.session_state and st.session_state.nav_page in nav_options:
+        default_index = nav_options.index(st.session_state.nav_page)
+        # Clear nav_page after using it
+        del st.session_state.nav_page
+    
     # Navigation with radio buttons
     page = st.radio(
-        "Select function:",
-        ["◉ Dashboard", "↑ Data Upload & Analysis", "⚡ Feature Engineering", 
-         "◈ Model Training", "◐ Model Explanation", "◎ Prediction & Advisory"],
+        "Chọn chức năng:",
+        nav_options,
+        index=default_index,
         label_visibility="collapsed"
     )
     
@@ -89,14 +100,14 @@ with st.sidebar:
     # Thông tin phiên làm việc
     with st.expander("▼ Session Status"):
         if 'data' in st.session_state and st.session_state.data is not None:
-            st.success(f"● Data loaded: {len(st.session_state.data)} rows")
+            st.success(f"● Đã tải dữ liệu: {len(st.session_state.data)} dòng")
         else:
-            st.info("○ No data uploaded")
+            st.info("○ Chưa tải dữ liệu")
         
         if 'model' in st.session_state and st.session_state.model is not None:
-            st.success("● Model trained")
+            st.success("● Đã huấn luyện mô hình")
         else:
-            st.info("○ No model trained")
+            st.info("○ Chưa huấn luyện mô hình")
         
         # Show configurations count
         total_configs = (
@@ -116,7 +127,7 @@ with st.sidebar:
                 st.caption(f"  - Binning: {len(st.session_state.binning_config)}")
         
         if 'processed_data' in st.session_state and st.session_state.processed_data is not None:
-            st.success(f"● Processed: {len(st.session_state.processed_data)} rows")
+            st.success(f"● Đã xử lý: {len(st.session_state.processed_data)} dòng")
     
     st.markdown("---")
     st.caption("© 2025 Credit Scoring System v1.0")
@@ -137,22 +148,22 @@ if page_changed:
     """, unsafe_allow_html=True)
 
 try:
-    if page == "◉ Dashboard":
+    if page == "🏠 Dashboard":
         from views import home
         home.render()
-    elif page == "↑ Data Upload & Analysis":
+    elif page == "📊 Data Upload & Analysis":
         from views import upload_eda
         upload_eda.render()
-    elif page == "⚡ Feature Engineering":
+    elif page == "⚙️ Feature Engineering":
         from views import feature_engineering
         feature_engineering.render()
-    elif page == "◈ Model Training":
+    elif page == "🧠 Model Training":
         from views import model_training
         model_training.render()
-    elif page == "◐ Model Explanation":
+    elif page == "💡 Model Explanation":
         from views import shap_explanation
         shap_explanation.render()
-    elif page == "◎ Prediction & Advisory":
+    elif page == "🎯 Prediction & Advisory":
         from views import prediction
         prediction.render()
 except Exception as e:

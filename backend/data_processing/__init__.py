@@ -14,12 +14,19 @@ from .encoder import (
     recommend_encoding
 )
 
+from .preprocessing_pipeline import (
+    PreprocessingPipeline,
+    create_pipeline
+)
+
 __all__ = [
     'OutlierHandler',
     'handle_outliers',
     'CategoricalEncoder',
     'encode_categorical',
-    'recommend_encoding'
+    'recommend_encoding',
+    'PreprocessingPipeline',
+    'create_pipeline'
 ]
 
 # TODO: Implement additional data processing functions

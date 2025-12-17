@@ -176,6 +176,12 @@ def _handle_negative_validation(data, selected_validate_cols, validation_type):
         st.session_state.validation_config = {}
     
     if st.button("✅ Áp Dụng Cho Tất Cả Cột", key="apply_negative_frag", width='stretch', type="primary"):
+        # Check if train_data exists
+        train_data = st.session_state.get('train_data')
+        if train_data is None:
+            st.error("⚠️ Chưa chia tập Train/Test. Vui lòng chia tập dữ liệu trước.")
+            st.stop()
+        
         if total_invalid > 0:
             if 'column_backups' not in st.session_state:
                 st.session_state.column_backups = {}
@@ -185,22 +191,46 @@ def _handle_negative_validation(data, selected_validate_cols, validation_type):
                 invalid_count = len(data[data[col] < 0])
                 if invalid_count > 0:
                     backup_key = f"validation_{col}"
-                    st.session_state.column_backups[backup_key] = st.session_state.data[col].copy()
+                    st.session_state.column_backups[backup_key] = {
+                        'data': st.session_state.data[col].copy(),
+                        'train_data': train_data[col].copy() if col in train_data.columns else None,
+                        'valid_data': st.session_state.valid_data[col].copy() if st.session_state.get('valid_data') is not None and col in st.session_state.valid_data.columns else None,
+                        'test_data': st.session_state.test_data[col].copy() if st.session_state.get('test_data') is not None and col in st.session_state.test_data.columns else None
+                    }
                     
+                    # Apply to main data
                     if action == "Chuyển về 0":
                         st.session_state.data.loc[st.session_state.data[col] < 0, col] = 0
+                        st.session_state.train_data.loc[st.session_state.train_data[col] < 0, col] = 0
+                        if st.session_state.get('valid_data') is not None:
+                            st.session_state.valid_data.loc[st.session_state.valid_data[col] < 0, col] = 0
+                        if st.session_state.get('test_data') is not None:
+                            st.session_state.test_data.loc[st.session_state.test_data[col] < 0, col] = 0
                     else:
                         st.session_state.data.loc[st.session_state.data[col] < 0, col] = np.nan
+                        st.session_state.train_data.loc[st.session_state.train_data[col] < 0, col] = np.nan
+                        if st.session_state.get('valid_data') is not None:
+                            st.session_state.valid_data.loc[st.session_state.valid_data[col] < 0, col] = np.nan
+                        if st.session_state.get('test_data') is not None:
+                            st.session_state.test_data.loc[st.session_state.test_data[col] < 0, col] = np.nan
+                    
+                    # Build datasets info
+                    datasets_info = "Train"
+                    if st.session_state.get('valid_data') is not None:
+                        datasets_info += "/Valid"
+                    if st.session_state.get('test_data') is not None:
+                        datasets_info += "/Test"
                     
                     st.session_state.validation_config[col] = {
                         'type': validation_type,
                         'action': action,
                         'affected_count': invalid_count,
-                        'applied': True
+                        'applied': True,
+                        'applied_to_all': True
                     }
                     processed_cols.append(col)
             
-            st.success(f"✅ Đã xử lý {total_invalid} giá trị âm trong {len(processed_cols)} cột!")
+            st.success(f"✅ Đã xử lý {total_invalid} giá trị âm trên {datasets_info}!")
         else:
             st.info("Không có giá trị âm để xử lý trong các cột đã chọn")
 
@@ -403,54 +433,84 @@ def outliers_transform_fragment(data):
             
             if selected_outlier_cols and outlier_method != "Keep All":
                 if st.button("✅ Áp Dụng Xử Lý Outliers", key="apply_outlier_frag", width='stretch', type="primary"):
+                    # Initialize preprocessing pipeline if not exists
+                    if 'preprocessing_pipeline' not in st.session_state or st.session_state.preprocessing_pipeline is None:
+                        from backend.data_processing import PreprocessingPipeline
+                        st.session_state.preprocessing_pipeline = PreprocessingPipeline()
+                    
+                    pipeline = st.session_state.preprocessing_pipeline
+                    
+                    # Get train_data for fitting
+                    train_data = st.session_state.get('train_data')
+                    if train_data is None:
+                        st.error("⚠️ Chưa chia tập Train/Test. Vui lòng chia tập dữ liệu trước.")
+                        st.stop()
+                    
                     processed = 0
                     for col in selected_outlier_cols:
                         # Backup
                         if 'outlier_backup' not in st.session_state:
                             st.session_state.outlier_backup = {}
-                        st.session_state.outlier_backup[col] = st.session_state.data[col].copy()
+                        st.session_state.outlier_backup[col] = {
+                            'data': st.session_state.data[col].copy(),
+                            'train_data': train_data[col].copy() if col in train_data.columns else None,
+                            'valid_data': st.session_state.valid_data[col].copy() if st.session_state.get('valid_data') is not None and col in st.session_state.valid_data.columns else None,
+                            'test_data': st.session_state.test_data[col].copy() if st.session_state.get('test_data') is not None and col in st.session_state.test_data.columns else None
+                        }
                         
-                        col_data = st.session_state.data[col].dropna()
-                        
+                        # FIT outlier bounds on train_data only
+                        params = {}
+                        action = 'clip'  # default
                         if outlier_method == "Winsorization":
-                            lower = col_data.quantile(lower_percentile)
-                            upper = col_data.quantile(upper_percentile)
-                            st.session_state.data[col] = st.session_state.data[col].clip(lower, upper)
-                            processed += 1
-                        
+                            params = {'lower_percentile': lower_percentile, 'upper_percentile': upper_percentile}
                         elif outlier_method == "IQR Method":
-                            Q1, Q3 = col_data.quantile([0.25, 0.75])
-                            IQR = Q3 - Q1
-                            lower = Q1 - iqr_multiplier * IQR
-                            upper = Q3 + iqr_multiplier * IQR
-                            
-                            if iqr_action == "clip":
-                                st.session_state.data[col] = st.session_state.data[col].clip(lower, upper)
-                            elif iqr_action == "nan":
-                                mask = (st.session_state.data[col] < lower) | (st.session_state.data[col] > upper)
-                                st.session_state.data.loc[mask, col] = np.nan
-                            elif iqr_action == "remove":
-                                st.session_state.data = st.session_state.data[
-                                    (st.session_state.data[col] >= lower) & (st.session_state.data[col] <= upper)
-                                ]
-                            processed += 1
-                        
+                            params = {'iqr_multiplier': iqr_multiplier}
+                            action = iqr_action
                         elif outlier_method == "Z-Score":
-                            mean = col_data.mean()
-                            std = col_data.std()
-                            z_scores = np.abs((st.session_state.data[col] - mean) / std)
-                            
-                            if z_action == "clip":
-                                lower = mean - z_threshold * std
-                                upper = mean + z_threshold * std
-                                st.session_state.data[col] = st.session_state.data[col].clip(lower, upper)
-                            elif z_action == "nan":
-                                st.session_state.data.loc[z_scores > z_threshold, col] = np.nan
-                            elif z_action == "remove":
-                                st.session_state.data = st.session_state.data[z_scores <= z_threshold]
-                            processed += 1
+                            params = {'z_threshold': z_threshold}
+                            action = z_action
+                        
+                        pipeline.fit_outlier_bounds(train_data, col, outlier_method, **params)
+                        
+                        # TRANSFORM all datasets with the same bounds
+                        # Transform main data
+                        st.session_state.data = pipeline.transform_outliers(st.session_state.data, col, action)
+                        
+                        # Transform train_data
+                        st.session_state.train_data = pipeline.transform_outliers(st.session_state.train_data, col, action)
+                        
+                        # Transform valid_data if exists
+                        if st.session_state.get('valid_data') is not None:
+                            st.session_state.valid_data = pipeline.transform_outliers(st.session_state.valid_data, col, action)
+                        
+                        # Transform test_data if exists
+                        if st.session_state.get('test_data') is not None:
+                            st.session_state.test_data = pipeline.transform_outliers(st.session_state.test_data, col, action)
+                        
+                        processed += 1
                     
-                    st.session_state._outlier_success = f"✅ Đã xử lý outliers cho {processed} cột bằng {outlier_method}!"
+                    # Save outlier config for dashboard
+                    if 'outlier_config' not in st.session_state or 'columns' not in st.session_state.get('outlier_config', {}):
+                        st.session_state.outlier_config = {'columns': [], 'details': {}}
+                    
+                    for col in selected_outlier_cols:
+                        if col not in st.session_state.outlier_config['columns']:
+                            st.session_state.outlier_config['columns'].append(col)
+                        st.session_state.outlier_config['details'][col] = {
+                            'method': outlier_method,
+                            'action': action,
+                            'applied': True,
+                            'applied_to_all': True
+                        }
+                    
+                    # Build success message
+                    datasets_info = "Train"
+                    if st.session_state.get('valid_data') is not None:
+                        datasets_info += "/Valid"
+                    if st.session_state.get('test_data') is not None:
+                        datasets_info += "/Test"
+                    
+                    st.session_state._outlier_success = f"✅ Đã xử lý outliers cho {processed} cột trên {datasets_info}"
                     st.rerun(scope="fragment")
     
     with col_outlier2:
@@ -566,34 +626,89 @@ def outliers_transform_fragment(data):
                     st.warning("⚠️ Reciprocal không xử lý được giá trị 0")
                 
                 if st.button("✅ Áp Dụng Biến Đổi", key="apply_transform_frag", width='stretch', type="primary", disabled=not can_apply):
+                    # Check if train_data exists
+                    train_data = st.session_state.get('train_data')
+                    if train_data is None:
+                        st.error("⚠️ Chưa chia tập Train/Test. Vui lòng chia tập dữ liệu trước.")
+                        st.stop()
+                    
                     # Backup
                     if 'transform_backup' not in st.session_state:
                         st.session_state.transform_backup = {}
-                    st.session_state.transform_backup[selected_transform_col] = st.session_state.data[selected_transform_col].copy()
+                    st.session_state.transform_backup[selected_transform_col] = {
+                        'data': st.session_state.data[selected_transform_col].copy(),
+                        'train_data': train_data[selected_transform_col].copy() if selected_transform_col in train_data.columns else None,
+                        'valid_data': st.session_state.valid_data[selected_transform_col].copy() if st.session_state.get('valid_data') is not None and selected_transform_col in st.session_state.valid_data.columns else None,
+                        'test_data': st.session_state.test_data[selected_transform_col].copy() if st.session_state.get('test_data') is not None and selected_transform_col in st.session_state.test_data.columns else None
+                    }
                     
-                    # Apply transformation
-                    if transform_method == "Log (logarithm)":
-                        st.session_state.data[selected_transform_col] = np.log(st.session_state.data[selected_transform_col])
-                    elif transform_method == "Log1p (log(1+x))":
-                        st.session_state.data[selected_transform_col] = np.log1p(st.session_state.data[selected_transform_col])
-                    elif transform_method == "Sqrt (square root)":
-                        st.session_state.data[selected_transform_col] = np.sqrt(np.abs(st.session_state.data[selected_transform_col]))
-                    elif transform_method == "Cbrt (cube root)":
-                        st.session_state.data[selected_transform_col] = np.cbrt(st.session_state.data[selected_transform_col])
-                    elif transform_method == "Box-Cox":
-                        from scipy import stats
-                        transformed, _ = stats.boxcox(st.session_state.data[selected_transform_col].dropna())
-                        st.session_state.data.loc[st.session_state.data[selected_transform_col].notna(), selected_transform_col] = transformed
-                    elif transform_method == "Yeo-Johnson":
-                        from scipy import stats
-                        transformed, _ = stats.yeojohnson(st.session_state.data[selected_transform_col].dropna())
-                        st.session_state.data.loc[st.session_state.data[selected_transform_col].notna(), selected_transform_col] = transformed
-                    elif transform_method == "Reciprocal (1/x)":
-                        st.session_state.data[selected_transform_col] = 1 / st.session_state.data[selected_transform_col]
-                    elif transform_method == "Square (x²)":
-                        st.session_state.data[selected_transform_col] = np.square(st.session_state.data[selected_transform_col])
+                    # Helper function to apply transformation
+                    def apply_transform(series, method):
+                        if method == "Log (logarithm)":
+                            return np.log(series)
+                        elif method == "Log1p (log(1+x))":
+                            return np.log1p(series)
+                        elif method == "Sqrt (square root)":
+                            return np.sqrt(np.abs(series))
+                        elif method == "Cbrt (cube root)":
+                            return np.cbrt(series)
+                        elif method == "Reciprocal (1/x)":
+                            return 1 / series
+                        elif method == "Square (x²)":
+                            return np.square(series)
+                        return series
                     
-                    st.session_state._transform_success = f"✅ Đã áp dụng {transform_method} cho cột `{selected_transform_col}`!"
+                    # Apply transformation to all datasets
+                    if transform_method in ["Box-Cox", "Yeo-Johnson"]:
+                        from scipy import stats
+                        if transform_method == "Box-Cox":
+                            transformed, _ = stats.boxcox(st.session_state.data[selected_transform_col].dropna())
+                            st.session_state.data.loc[st.session_state.data[selected_transform_col].notna(), selected_transform_col] = transformed
+                            transformed_train, _ = stats.boxcox(train_data[selected_transform_col].dropna())
+                            st.session_state.train_data.loc[st.session_state.train_data[selected_transform_col].notna(), selected_transform_col] = transformed_train
+                            if st.session_state.get('valid_data') is not None:
+                                transformed_valid, _ = stats.boxcox(st.session_state.valid_data[selected_transform_col].dropna())
+                                st.session_state.valid_data.loc[st.session_state.valid_data[selected_transform_col].notna(), selected_transform_col] = transformed_valid
+                            if st.session_state.get('test_data') is not None:
+                                transformed_test, _ = stats.boxcox(st.session_state.test_data[selected_transform_col].dropna())
+                                st.session_state.test_data.loc[st.session_state.test_data[selected_transform_col].notna(), selected_transform_col] = transformed_test
+                        else:  # Yeo-Johnson
+                            transformed, _ = stats.yeojohnson(st.session_state.data[selected_transform_col].dropna())
+                            st.session_state.data.loc[st.session_state.data[selected_transform_col].notna(), selected_transform_col] = transformed
+                            transformed_train, _ = stats.yeojohnson(train_data[selected_transform_col].dropna())
+                            st.session_state.train_data.loc[st.session_state.train_data[selected_transform_col].notna(), selected_transform_col] = transformed_train
+                            if st.session_state.get('valid_data') is not None:
+                                transformed_valid, _ = stats.yeojohnson(st.session_state.valid_data[selected_transform_col].dropna())
+                                st.session_state.valid_data.loc[st.session_state.valid_data[selected_transform_col].notna(), selected_transform_col] = transformed_valid
+                            if st.session_state.get('test_data') is not None:
+                                transformed_test, _ = stats.yeojohnson(st.session_state.test_data[selected_transform_col].dropna())
+                                st.session_state.test_data.loc[st.session_state.test_data[selected_transform_col].notna(), selected_transform_col] = transformed_test
+                    else:
+                        st.session_state.data[selected_transform_col] = apply_transform(st.session_state.data[selected_transform_col], transform_method)
+                        st.session_state.train_data[selected_transform_col] = apply_transform(st.session_state.train_data[selected_transform_col], transform_method)
+                        if st.session_state.get('valid_data') is not None:
+                            st.session_state.valid_data[selected_transform_col] = apply_transform(st.session_state.valid_data[selected_transform_col], transform_method)
+                        if st.session_state.get('test_data') is not None:
+                            st.session_state.test_data[selected_transform_col] = apply_transform(st.session_state.test_data[selected_transform_col], transform_method)
+                    
+                    # Save transform config for dashboard
+                    if 'transform_config' not in st.session_state or not isinstance(st.session_state.transform_config, dict):
+                        st.session_state.transform_config = {}
+                    
+                    st.session_state.transform_config[selected_transform_col] = {
+                        'method': transform_method,
+                        'applied': True,
+                        'applied_to_all': True
+                    }
+                    
+                    # Build success message
+                    datasets_info = "Train"
+                    if st.session_state.get('valid_data') is not None:
+                        datasets_info += "/Valid"
+                    if st.session_state.get('test_data') is not None:
+                        datasets_info += "/Test"
+                    
+                    st.session_state._transform_success = f"✅ Đã áp dụng {transform_method} cho `{selected_transform_col}` trên {datasets_info}"
                     st.rerun(scope="fragment")
     
     with col_transform2:
@@ -763,71 +878,82 @@ def missing_values_fragment(data, missing_data):
                 processed_count = 0
                 total_filled = 0
                 
+                # Initialize preprocessing pipeline if not exists
+                if 'preprocessing_pipeline' not in st.session_state or st.session_state.preprocessing_pipeline is None:
+                    from backend.data_processing import PreprocessingPipeline
+                    st.session_state.preprocessing_pipeline = PreprocessingPipeline()
+                
+                pipeline = st.session_state.preprocessing_pipeline
+                
+                # Get train_data for fitting
+                train_data = st.session_state.get('train_data')
+                if train_data is None:
+                    st.error("⚠️ Chưa chia tập Train/Test. Vui lòng chia tập dữ liệu trước.")
+                    st.stop()
+                
                 for col in selected_missing_cols:
                     missing_count = current_data[col].isnull().sum()
                     
                     # BACKUP current state
                     st.session_state.column_backups[col] = {
                         'data': st.session_state.data[col].copy(),
-                        'full_data': st.session_state.data.copy()
+                        'full_data': st.session_state.data.copy(),
+                        'train_data': train_data[col].copy() if col in train_data.columns else None,
+                        'valid_data': st.session_state.get('valid_data', pd.DataFrame())[col].copy() if st.session_state.get('valid_data') is not None and col in st.session_state.valid_data.columns else None,
+                        'test_data': st.session_state.get('test_data', pd.DataFrame())[col].copy() if st.session_state.get('test_data') is not None and col in st.session_state.test_data.columns else None
                     }
                     
-                    # Apply the method
-                    if selected_method == "Mean Imputation":
-                        if pd.api.types.is_numeric_dtype(st.session_state.data[col]):
-                            st.session_state.data[col].fillna(st.session_state.data[col].mean(), inplace=True)
-                            total_filled += missing_count
-                            processed_count += 1
-                    elif selected_method == "Median Imputation":
-                        if pd.api.types.is_numeric_dtype(st.session_state.data[col]):
-                            st.session_state.data[col].fillna(st.session_state.data[col].median(), inplace=True)
-                            total_filled += missing_count
-                            processed_count += 1
-                    elif selected_method == "Mode Imputation":
-                        mode_val = st.session_state.data[col].mode()
-                        fill_val = mode_val[0] if len(mode_val) > 0 else 0
-                        st.session_state.data[col].fillna(fill_val, inplace=True)
-                        total_filled += missing_count
-                        processed_count += 1
-                    elif selected_method == "Forward Fill":
-                        st.session_state.data[col].fillna(method='ffill', inplace=True)
-                        total_filled += missing_count
-                        processed_count += 1
-                    elif selected_method == "Backward Fill":
-                        st.session_state.data[col].fillna(method='bfill', inplace=True)
-                        total_filled += missing_count
-                        processed_count += 1
-                    elif selected_method == "Interpolation":
-                        if pd.api.types.is_numeric_dtype(st.session_state.data[col]):
-                            st.session_state.data[col] = st.session_state.data[col].interpolate()
-                            total_filled += missing_count
-                            processed_count += 1
-                    elif selected_method == "Constant Value":
-                        fill_val = constant_val
-                        if pd.api.types.is_numeric_dtype(st.session_state.data[col]):
+                    # FIT on train_data only
+                    constant_value = None
+                    if selected_method == "Constant Value":
+                        constant_value = constant_val
+                        if pd.api.types.is_numeric_dtype(train_data[col]):
                             try:
-                                fill_val = float(fill_val) if '.' in str(fill_val) else int(fill_val)
+                                constant_value = float(constant_val) if '.' in str(constant_val) else int(constant_val)
                             except:
                                 pass
-                        st.session_state.data[col].fillna(fill_val, inplace=True)
-                        total_filled += missing_count
-                        processed_count += 1
-                    elif selected_method == "Drop Rows":
-                        st.session_state.data = st.session_state.data[st.session_state.data[col].notna()]
-                        total_filled += missing_count
-                        processed_count += 1
                     
-                    # Save config
+                    pipeline.fit_imputer(train_data, col, selected_method, constant_value)
+                    
+                    # TRANSFORM all datasets
+                    # Transform main data
+                    st.session_state.data = pipeline.transform_imputation(st.session_state.data, col)
+                    
+                    # Transform train_data
+                    st.session_state.train_data = pipeline.transform_imputation(st.session_state.train_data, col)
+                    
+                    # Transform valid_data if exists
+                    if st.session_state.get('valid_data') is not None:
+                        st.session_state.valid_data = pipeline.transform_imputation(st.session_state.valid_data, col)
+                    
+                    # Transform test_data if exists
+                    if st.session_state.get('test_data') is not None:
+                        st.session_state.test_data = pipeline.transform_imputation(st.session_state.test_data, col)
+                    
+                    total_filled += missing_count
+                    processed_count += 1
+                    
+                    # Save config with fill_value info
+                    imputer_info = pipeline.imputers.get(col, {})
                     st.session_state.missing_config[col] = {
                         'method': selected_method,
                         'original_missing': missing_count,
+                        'fill_value': imputer_info.get('fill_value'),
                         'processed': True,
-                        'can_undo': True
+                        'can_undo': True,
+                        'applied_to_all': True  # Mark that it was applied to all datasets
                     }
                     if selected_method == "Constant Value":
                         st.session_state.missing_config[col]['constant'] = constant_val
                 
-                st.session_state._missing_success = f"✅ Đã xử lý {processed_count} cột, tổng {total_filled} giá trị missing bằng {selected_method}!"
+                # Show success message with info about all datasets
+                datasets_info = "Train"
+                if st.session_state.get('valid_data') is not None:
+                    datasets_info += "/Valid"
+                if st.session_state.get('test_data') is not None:
+                    datasets_info += "/Test"
+                
+                st.session_state._missing_success = f"✅ Đã xử lý {processed_count} cột ({total_filled} giá trị) trên {datasets_info}"
                 st.rerun(scope="fragment")
         else:
             st.info("💡 Vui lòng chọn ít nhất một cột để xử lý missing values")
@@ -1313,34 +1439,93 @@ def encoding_fragment(data):
             if remaining_categorical_cols:
                 if st.button("➕ Thêm Cấu Hình", key="add_enc_config_frag", width='stretch', type="primary"):
                     try:
+                        # Initialize preprocessing pipeline if not exists
+                        if 'preprocessing_pipeline' not in st.session_state or st.session_state.preprocessing_pipeline is None:
+                            from backend.data_processing import PreprocessingPipeline
+                            st.session_state.preprocessing_pipeline = PreprocessingPipeline()
+                        
+                        pipeline = st.session_state.preprocessing_pipeline
+                        
+                        # Get train_data for fitting
+                        train_data = st.session_state.get('train_data')
+                        if train_data is None:
+                            st.error("⚠️ Chưa chia tập Train/Test. Vui lòng chia tập dữ liệu trước.")
+                            st.stop()
+                        
                         from backend.data_processing import encode_categorical
                         
                         # Backup
                         if 'column_backups' not in st.session_state:
                             st.session_state.column_backups = {}
                         backup_key = f"encoding_{selected_enc_col}"
-                        st.session_state.column_backups[backup_key] = st.session_state.data[selected_enc_col].copy()
+                        st.session_state.column_backups[backup_key] = {
+                            'data': st.session_state.data[selected_enc_col].copy(),
+                            'train_data': train_data[selected_enc_col].copy() if selected_enc_col in train_data.columns else None,
+                            'valid_data': st.session_state.valid_data[selected_enc_col].copy() if st.session_state.get('valid_data') is not None and selected_enc_col in st.session_state.valid_data.columns else None,
+                            'test_data': st.session_state.test_data[selected_enc_col].copy() if st.session_state.get('test_data') is not None and selected_enc_col in st.session_state.test_data.columns else None
+                        }
                         
-                        # Apply encoding
+                        # FIT encoder on train_data only
+                        pipeline.fit_encoder(train_data, selected_enc_col, encoding_method, **encoding_params)
+                        
+                        # TRANSFORM all datasets using the same encode_categorical function
+                        # Transform main data
                         encoded_data, encoding_info = encode_categorical(
                             data=st.session_state.data,
                             method=encoding_method,
                             columns=[selected_enc_col],
                             **encoding_params
                         )
-                        
-                        # Save
                         st.session_state.data = encoded_data
+                        
+                        # Transform train_data
+                        encoded_train, _ = encode_categorical(
+                            data=st.session_state.train_data,
+                            method=encoding_method,
+                            columns=[selected_enc_col],
+                            **encoding_params
+                        )
+                        st.session_state.train_data = encoded_train
+                        
+                        # Transform valid_data if exists
+                        if st.session_state.get('valid_data') is not None:
+                            encoded_valid, _ = encode_categorical(
+                                data=st.session_state.valid_data,
+                                method=encoding_method,
+                                columns=[selected_enc_col],
+                                **encoding_params
+                            )
+                            st.session_state.valid_data = encoded_valid
+                        
+                        # Transform test_data if exists
+                        if st.session_state.get('test_data') is not None:
+                            encoded_test, _ = encode_categorical(
+                                data=st.session_state.test_data,
+                                method=encoding_method,
+                                columns=[selected_enc_col],
+                                **encoding_params
+                            )
+                            st.session_state.test_data = encoded_test
+                        
+                        # Save config
                         st.session_state.encoding_config[selected_enc_col] = {
                             'method': encoding_method,
                             'unique_count': unique_count,
                             'params': encoding_params,
-                            'applied': True
+                            'applied': True,
+                            'applied_to_all': True
                         }
                         
                         if 'encoding_applied_info' not in st.session_state:
                             st.session_state.encoding_applied_info = {}
                         st.session_state.encoding_applied_info.update(encoding_info)
+                        
+                        # Build success message
+                        datasets_info = "Train"
+                        if st.session_state.get('valid_data') is not None:
+                            datasets_info += "/Valid"
+                        if st.session_state.get('test_data') is not None:
+                            datasets_info += "/Test"
                         
                         # Store success message
                         new_cols_count = None
@@ -1350,7 +1535,8 @@ def encoding_fragment(data):
                         st.session_state._encoding_success = {
                             'col': selected_enc_col,
                             'method': encoding_method,
-                            'new_cols': new_cols_count
+                            'new_cols': new_cols_count,
+                            'datasets': datasets_info
                         }
                         
                         st.rerun(scope="fragment")
@@ -1705,22 +1891,18 @@ def scaling_fragment(data):
             if st.button("🔄 Thực Hiện Scaling", key="apply_scaling_btn_frag", type="primary", width='stretch'):
                 if selected_scale_cols:
                     try:
-                        from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler, Normalizer
+                        # Initialize preprocessing pipeline if not exists
+                        if 'preprocessing_pipeline' not in st.session_state or st.session_state.preprocessing_pipeline is None:
+                            from backend.data_processing import PreprocessingPipeline
+                            st.session_state.preprocessing_pipeline = PreprocessingPipeline()
                         
-                        # Select scaler
-                        if "StandardScaler" in scaling_method:
-                            scaler = StandardScaler()
-                        elif "MinMaxScaler" in scaling_method:
-                            scaler = MinMaxScaler()
-                        elif "RobustScaler" in scaling_method:
-                            scaler = RobustScaler()
-                        elif "MaxAbsScaler" in scaling_method:
-                            scaler = MaxAbsScaler()
-                        elif "Normalizer" in scaling_method:
-                            scaler = Normalizer()
+                        pipeline = st.session_state.preprocessing_pipeline
                         
-                        # Fit and transform
-                        scaled_data = scaler.fit_transform(st.session_state.data[selected_scale_cols])
+                        # Get train_data for fitting
+                        train_data = st.session_state.get('train_data')
+                        if train_data is None:
+                            st.error("⚠️ Chưa chia tập Train/Test. Vui lòng chia tập dữ liệu trước.")
+                            st.stop()
                         
                         # Initialize configs if not exists
                         if 'scaling_config' not in st.session_state:
@@ -1731,13 +1913,41 @@ def scaling_fragment(data):
                         # Backup columns before scaling
                         for col in selected_scale_cols:
                             backup_key = f"scaling_{col}"
-                            st.session_state.column_backups[backup_key] = st.session_state.data[col].copy()
+                            st.session_state.column_backups[backup_key] = {
+                                'data': st.session_state.data[col].copy(),
+                                'train_data': train_data[col].copy() if col in train_data.columns else None,
+                                'valid_data': st.session_state.valid_data[col].copy() if st.session_state.get('valid_data') is not None and col in st.session_state.valid_data.columns else None,
+                                'test_data': st.session_state.test_data[col].copy() if st.session_state.get('test_data') is not None and col in st.session_state.test_data.columns else None
+                            }
                         
-                        # Create DataFrame
+                        # FIT scaler on train_data only
+                        pipeline.fit_scaler(train_data, selected_scale_cols, scaling_method)
+                        
+                        # TRANSFORM all datasets
                         if create_new_cols:
                             new_col_names = [f"{col}_scaled" for col in selected_scale_cols]
-                            scaled_df = pd.DataFrame(scaled_data, columns=new_col_names, index=st.session_state.data.index)
+                            
+                            # Transform and add new columns to main data
+                            scaled_main = pipeline.scalers["_".join(sorted(selected_scale_cols))]['scaler'].transform(st.session_state.data[selected_scale_cols])
+                            scaled_df = pd.DataFrame(scaled_main, columns=new_col_names, index=st.session_state.data.index)
                             st.session_state.data = pd.concat([st.session_state.data, scaled_df], axis=1)
+                            
+                            # Transform train_data
+                            scaled_train = pipeline.scalers["_".join(sorted(selected_scale_cols))]['scaler'].transform(train_data[selected_scale_cols])
+                            scaled_train_df = pd.DataFrame(scaled_train, columns=new_col_names, index=train_data.index)
+                            st.session_state.train_data = pd.concat([st.session_state.train_data, scaled_train_df], axis=1)
+                            
+                            # Transform valid_data if exists
+                            if st.session_state.get('valid_data') is not None:
+                                scaled_valid = pipeline.scalers["_".join(sorted(selected_scale_cols))]['scaler'].transform(st.session_state.valid_data[selected_scale_cols])
+                                scaled_valid_df = pd.DataFrame(scaled_valid, columns=new_col_names, index=st.session_state.valid_data.index)
+                                st.session_state.valid_data = pd.concat([st.session_state.valid_data, scaled_valid_df], axis=1)
+                            
+                            # Transform test_data if exists
+                            if st.session_state.get('test_data') is not None:
+                                scaled_test = pipeline.scalers["_".join(sorted(selected_scale_cols))]['scaler'].transform(st.session_state.test_data[selected_scale_cols])
+                                scaled_test_df = pd.DataFrame(scaled_test, columns=new_col_names, index=st.session_state.test_data.index)
+                                st.session_state.test_data = pd.concat([st.session_state.test_data, scaled_test_df], axis=1)
                             
                             # Save config for each new column
                             for orig_col, new_col in zip(selected_scale_cols, new_col_names):
@@ -1745,22 +1955,44 @@ def scaling_fragment(data):
                                     'method': scaling_method,
                                     'original_column': orig_col,
                                     'new_column': True,
-                                    'applied': True
+                                    'applied': True,
+                                    'applied_to_all': True
                                 }
                         else:
-                            st.session_state.data[selected_scale_cols] = scaled_data
+                            # Transform main data (overwrite)
+                            st.session_state.data = pipeline.transform_scaling(st.session_state.data, selected_scale_cols)
+                            
+                            # Transform train_data
+                            st.session_state.train_data = pipeline.transform_scaling(st.session_state.train_data, selected_scale_cols)
+                            
+                            # Transform valid_data if exists
+                            if st.session_state.get('valid_data') is not None:
+                                st.session_state.valid_data = pipeline.transform_scaling(st.session_state.valid_data, selected_scale_cols)
+                            
+                            # Transform test_data if exists
+                            if st.session_state.get('test_data') is not None:
+                                st.session_state.test_data = pipeline.transform_scaling(st.session_state.test_data, selected_scale_cols)
                             
                             # Save config for each scaled column
                             for col in selected_scale_cols:
                                 st.session_state.scaling_config[col] = {
                                     'method': scaling_method,
                                     'new_column': False,
-                                    'applied': True
+                                    'applied': True,
+                                    'applied_to_all': True
                                 }
+                        
+                        # Build success message
+                        datasets_info = "Train"
+                        if st.session_state.get('valid_data') is not None:
+                            datasets_info += "/Valid"
+                        if st.session_state.get('test_data') is not None:
+                            datasets_info += "/Test"
                         
                         st.session_state._scaling_success = {
                             'count': len(selected_scale_cols),
-                            'new_cols': create_new_cols
+                            'new_cols': create_new_cols,
+                            'datasets': datasets_info
                         }
                         st.rerun(scope="fragment")
                     
@@ -2040,47 +2272,20 @@ def feature_selection_fragment(data):
     col1, col2 = st.columns([1, 1])
     
     with col1:
-        # Get current saved target
+        # Get current saved target from session state (set in Tiền Xử Lý tab)
         current_target = st.session_state.get('target_column')
         
-        # Determine initial index
         if current_target and current_target in all_cols:
-            initial_index = all_cols.index(current_target)
+            st.success(f"🎯 Cột target: **`{current_target}`**")
         else:
-            initial_index = len(all_cols) - 1 if len(all_cols) > 0 else 0
-        
-        target_col = st.selectbox(
-            "Chọn biến mục tiêu (Target):",
-            all_cols,
-            index=initial_index,
-            key="target_col_frag"
-        )
-        
-        # Check if selection changed
-        selection_changed = (target_col != current_target)
-        
-        # Button to save target selection
-        if st.button(
-            "💾 Lưu Target", 
-            key="save_target_feature_sel_frag",
-            disabled=not selection_changed,
-            help="Lưu lựa chọn target column" if selection_changed else "Target đã được lưu",
-            use_container_width=True
-        ):
-            st.session_state.target_column = target_col
-            st.session_state._feature_selection_success = f"✅ Đã lưu target: `{target_col}`"
-            st.rerun(scope="fragment")
+            st.warning("⚠️ Chưa chọn cột target. Vui lòng quay lại tab **Tiền Xử Lý** để chọn target.")
+            return
     
     with col2:
         st.metric("Số biến có sẵn", len(all_cols) - 1)
     
     # Get the saved target column from session state
-    saved_target = st.session_state.get('target_column')
-    
-    # Check if target is selected
-    if not saved_target:
-        st.warning("⚠️ Vui lòng chọn và lưu cột target ở trên để tiếp tục")
-        return
+    saved_target = current_target
     
     # Available features (exclude target)
     available_features = [col for col in all_cols if col != saved_target]
@@ -2399,9 +2604,18 @@ def render():
                 with col3:
                     st.markdown(f"{cfg.get('method', 'N/A')}")
                 with col4:
-                    st.markdown(f"{cfg.get('value', 'N/A')}")
+                    fill_val = cfg.get('fill_value', cfg.get('constant', 'N/A'))
+                    st.markdown(f"{fill_val}")
                 with col5:
-                    st.markdown("⏳ **Chờ áp dụng**")
+                    is_applied = cfg.get('processed', False)
+                    if is_applied:
+                        applied_to_all = cfg.get('applied_to_all', False)
+                        if applied_to_all:
+                            st.markdown("✅ **Train/Valid/Test**")
+                        else:
+                            st.markdown("✅ **Đã áp dụng**")
+                    else:
+                        st.markdown("⏳ **Chờ áp dụng**")
                 with col6:
                     if st.button("🗑️", key=f"delete_missing_{col}", help=f"Xóa cấu hình {col}"):
                         del st.session_state.missing_config[col]
@@ -2413,10 +2627,13 @@ def render():
             # Outlier configs
             if st.session_state.get('outlier_config'):
                 outlier_cfg = st.session_state.outlier_config
-                is_applied = 'info' in outlier_cfg
+                details = outlier_cfg.get('details', {})
                 
                 for col in outlier_cfg.get('columns', []):
                     config_count += 1
+                    col_detail = details.get(col, {})
+                    is_applied = col_detail.get('applied', False)
+                    
                     col1, col2, col3, col4, col5, col6 = st.columns([1.5, 1.5, 2, 1.5, 1.5, 0.8])
                     
                     with col1:
@@ -2424,22 +2641,39 @@ def render():
                     with col2:
                         st.markdown(f"`{col}`")
                     with col3:
-                        st.markdown(f"{outlier_cfg.get('method', 'N/A')}")
+                        st.markdown(f"{col_detail.get('method', 'N/A')}")
                     with col4:
-                        st.markdown(f"{outlier_cfg.get('multiplier', outlier_cfg.get('threshold', 'N/A'))}")
+                        st.markdown(f"Action: {col_detail.get('action', 'N/A')}")
                     with col5:
                         if is_applied:
-                            st.markdown("✅ **Đã áp dụng**")
+                            applied_to_all = col_detail.get('applied_to_all', False)
+                            if applied_to_all:
+                                st.markdown("✅ **Train/Valid/Test**")
+                            else:
+                                st.markdown("✅ **Đã áp dụng**")
                         else:
                             st.markdown("⏳ **Chờ áp dụng**")
                     with col6:
-                        if is_applied and col in st.session_state.get('column_backups', {}):
+                        backup_key = f"outlier_{col}" if f"outlier_{col}" in st.session_state.get('outlier_backup', {}) else col
+                        if is_applied and backup_key in st.session_state.get('outlier_backup', {}):
                             if st.button("↩️", key=f"undo_outlier_{col}", help=f"Hoàn tác xử lý outlier {col}"):
                                 # Restore column from backup
-                                st.session_state.data[col] = st.session_state.column_backups[col]
-                                del st.session_state.column_backups[col]
+                                backup = st.session_state.outlier_backup[backup_key]
+                                if isinstance(backup, dict):
+                                    st.session_state.data[col] = backup.get('data')
+                                    if backup.get('train_data') is not None:
+                                        st.session_state.train_data[col] = backup['train_data']
+                                    if backup.get('valid_data') is not None:
+                                        st.session_state.valid_data[col] = backup['valid_data']
+                                    if backup.get('test_data') is not None:
+                                        st.session_state.test_data[col] = backup['test_data']
+                                else:
+                                    st.session_state.data[col] = backup
+                                del st.session_state.outlier_backup[backup_key]
                                 # Remove from outlier config
                                 st.session_state.outlier_config['columns'].remove(col)
+                                if col in st.session_state.outlier_config.get('details', {}):
+                                    del st.session_state.outlier_config['details'][col]
                                 if not st.session_state.outlier_config['columns']:
                                     st.session_state.outlier_config = {}
                                 st.success(f"✅ Đã hoàn tác xử lý outlier cho `{col}`")
@@ -2472,7 +2706,11 @@ def render():
                     st.markdown(f"{params_str or 'default'}")
                 with col5:
                     if is_applied:
-                        st.markdown("✅ **Đã áp dụng**")
+                        applied_to_all = cfg.get('applied_to_all', False)
+                        if applied_to_all:
+                            st.markdown("✅ **Train/Valid/Test**")
+                        else:
+                            st.markdown("✅ **Đã áp dụng**")
                     else:
                         st.markdown("⏳ **Chờ áp dụng**")
                 with col6:
@@ -2521,7 +2759,11 @@ def render():
                     st.markdown(f"{cfg.get('threshold', cfg.get('value', 'N/A'))}")
                 with col5:
                     if is_applied:
-                        st.markdown("✅ **Đã áp dụng**")
+                        applied_to_all = cfg.get('applied_to_all', False)
+                        if applied_to_all:
+                            st.markdown("✅ **Train/Valid/Test**")
+                        else:
+                            st.markdown("✅ **Đã áp dụng**")
                     else:
                         st.markdown("⏳ **Chờ áp dụng**")
                 with col6:
@@ -2593,7 +2835,11 @@ def render():
                     st.markdown(f"{range_str}")
                 with col5:
                     if is_applied:
-                        st.markdown("✅ **Đã áp dụng**")
+                        applied_to_all = cfg.get('applied_to_all', False)
+                        if applied_to_all:
+                            st.markdown("✅ **Train/Valid/Test**")
+                        else:
+                            st.markdown("✅ **Đã áp dụng**")
                     else:
                         st.markdown("⏳ **Chờ áp dụng**")
                 with col6:
@@ -2862,7 +3108,7 @@ def render():
     background-color: #1e1e1e;
     border-radius: 12px;
     width: 90%;
-    max-width: 700px;
+    max-width: 800px;
     box-shadow: 0 8px 32px rgba(0,0,0,0.4);
     animation: slideDown 0.3s;
     max-height: 80vh;

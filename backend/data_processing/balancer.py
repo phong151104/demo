@@ -128,8 +128,8 @@ def balance_data(
         
     except ImportError as e:
         raise ImportError(
-            "imbalanced-learn library is required for data balancing. "
-            "Install it with: pip install imbalanced-learn"
+            f"imbalanced-learn library is required for data balancing. "
+            f"Install it with: pip install imbalanced-learn. Error: {str(e)}"
         )
     except Exception as e:
         raise Exception(f"Error during data balancing: {str(e)}")

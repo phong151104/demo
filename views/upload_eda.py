@@ -1,5 +1,5 @@
 """
-Trang Upload & EDA - Upload dữ liệu và phân tích khám phá
+Upload & EDA Page - Upload data and exploratory data analysis
 """
 
 import streamlit as st
@@ -15,7 +15,7 @@ from backend.llm_integration import analyze_eda_with_llm, get_eda_summary, LLMCo
 
 
 def render():
-    """Render trang Upload & EDA"""
+    """Render Upload & EDA page"""
     print("DEBUG: Starting upload_eda.render()")
     try:
         init_session_state()
@@ -25,16 +25,16 @@ def render():
         print(f"ERROR: Session init failed: {e}")
         return
     
-    st.markdown("## 📤 Upload Dữ Liệu & Phân Tích Khám Phá (EDA)")
+    st.markdown("## 📤 Tải Dữ Liệu & Phân Tích Khám Phá Dữ Liệu (EDA)")
     st.markdown("Tải lên file CSV chứa dữ liệu khách hàng và khám phá các thông tin quan trọng.")
     
     st.markdown("---")
     
     # File uploader
     uploaded_file = st.file_uploader(
-        "Chọn file CSV dữ liệu",
+        "Chọn file dữ liệu CSV",
         type=['csv'],
-        help="Upload file CSV chứa dữ liệu khách hàng với các đặc trưng và nhãn",
+        help="Tải lên file CSV chứa dữ liệu khách hàng với các đặc trưng và nhãn",
         key="csv_uploader"
     )
     
@@ -59,22 +59,31 @@ def render():
             if is_new_file:
                 clear_data_related_state()
                 st.session_state.current_file_id = uploaded_file_id
-                st.info("🔄 File mới được tải lên - Đã xóa các cấu hình cũ")
+                st.info("🔄 Đã tải file mới - Các cấu hình trước đó đã được xóa")
             
             st.session_state.data = data
-            st.success(f"✅ Data loaded successfully! ({len(data)} rows, {len(data.columns)} columns)")
+            st.success(f"✅ Đã tải dữ liệu thành công! ({len(data)} dòng, {len(data.columns)} cột)")
             
             # Use session state to track current tab (workaround for st.tabs not preserving state)
             if 'current_eda_tab' not in st.session_state:
                 st.session_state.current_eda_tab = "📋 Dữ Liệu Mẫu"
             
             # Tab selector using radio (preserves state on rerun)
+            # Define tabs
+            tabs = ["📋 Dữ Liệu Mẫu", "📊 Thống Kê Mô Tả", "📈 Phân Phối Dữ Liệu", "✨ Phân Tích AI"]
+            
+            # Tab selector using radio (preserves state on rerun)
+            # Handle migration from English to Vietnamese state or other invalid states
+            current_tab_index = 0
+            if st.session_state.current_eda_tab in tabs:
+                current_tab_index = tabs.index(st.session_state.current_eda_tab)
+            
             selected_tab = st.radio(
                 "Chọn mục:",
-                ["📋 Dữ Liệu Mẫu", "📊 Thống Kê Mô Tả", "📈 Phân Phối Dữ Liệu", "🤖 Phân Tích AI"],
+                tabs,
                 horizontal=True,
                 key="eda_tab_selector",
-                index=["📋 Dữ Liệu Mẫu", "📊 Thống Kê Mô Tả", "📈 Phân Phối Dữ Liệu", "🤖 Phân Tích AI"].index(st.session_state.current_eda_tab)
+                index=current_tab_index
             )
             st.session_state.current_eda_tab = selected_tab
             
@@ -197,18 +206,18 @@ def render():
                 # Data info
                 col1, col2, col3, col4 = st.columns(4)
                 with col1:
-                    st.metric("📊 Tổng số dòng", f"{len(data):,}")
+                    st.metric("📊 Total Rows", f"{len(data):,}")
                 with col2:
-                    st.metric("📋 Tổng số cột", len(data.columns))
+                    st.metric("📋 Total Columns", len(data.columns))
                 with col3:
                     missing_pct = (data.isnull().sum().sum() / (len(data) * len(data.columns)) * 100)
-                    st.metric("❓ Dữ liệu thiếu", f"{missing_pct:.1f}%")
+                    st.metric("❓ Missing Data", f"{missing_pct:.1f}%")
                 with col4:
                     numeric_cols = data.select_dtypes(include=[np.number]).columns
-                    st.metric("🔢 Cột số", len(numeric_cols))
+                    st.metric("🔢 Numeric Columns", len(numeric_cols))
             
             # Tab 2: Descriptive Statistics
-            elif selected_tab == "📊 Thống Kê Mô Tả":
+            elif selected_tab == tabs[1]:
                 st.markdown("### 📊 Thống Kê Mô Tả")
                 
                 # Numeric columns stats
@@ -229,7 +238,7 @@ def render():
                     # Download stats
                     csv = stats_df.to_csv(index=True).encode('utf-8')
                     st.download_button(
-                        "📥 Tải Thống Kê (CSV)",
+                        "📥 Tải Xuống Thống Kê (CSV)",
                         csv,
                         "statistics.csv",
                         "text/csv",
@@ -239,7 +248,7 @@ def render():
                     st.markdown("---")
                     
                     # Detailed column analysis
-                    st.markdown("#### 🔍 Phân Tích Chi Tiết Từng Cột")
+                    st.markdown("#### 🔍 Phân Tích Chi Tiết Cột")
                     
                     numeric_cols = numeric_data.columns.tolist()
                     selected_numeric_col = st.selectbox(
@@ -249,7 +258,7 @@ def render():
                     )
                     
                     if selected_numeric_col:
-                        st.markdown(f"### 📊 Dashboard Phân Tích: `{selected_numeric_col}`")
+                        st.markdown(f"### 📊 Bảng Phân Tích: `{selected_numeric_col}`")
                         
                         col_data = data[selected_numeric_col].dropna()
                         
@@ -258,13 +267,13 @@ def render():
                         metric_cols = st.columns(6)
                         
                         with metric_cols[0]:
-                            st.metric("Count", f"{len(col_data):,}")
+                            st.metric("Số lượng", f"{len(col_data):,}")
                         with metric_cols[1]:
-                            st.metric("Mean", f"{col_data.mean():.2f}")
+                            st.metric("Trung bình", f"{col_data.mean():.2f}")
                         with metric_cols[2]:
-                            st.metric("Median", f"{col_data.median():.2f}")
+                            st.metric("Trung vị", f"{col_data.median():.2f}")
                         with metric_cols[3]:
-                            st.metric("Std Dev", f"{col_data.std():.2f}")
+                            st.metric("Độ lệch chuẩn", f"{col_data.std():.2f}")
                         with metric_cols[4]:
                             st.metric("Min", f"{col_data.min():.2f}")
                         with metric_cols[5]:
@@ -277,7 +286,7 @@ def render():
                         
                         with chart_col1:
                             # Histogram with default bins
-                            st.markdown("##### 📊 Histogram & Distribution")
+                            st.markdown("##### 📊 Biểu đồ Histogram & Phân Phối")
                             fig_hist = px.histogram(
                                 data,
                                 x=selected_numeric_col,
@@ -289,13 +298,13 @@ def render():
                                 height=350,
                                 showlegend=False,
                                 xaxis_title=selected_numeric_col,
-                                yaxis_title="Frequency"
+                                yaxis_title="Tần suất"
                             )
                             st.plotly_chart(fig_hist, width='stretch')
                         
                         with chart_col2:
                             # Box plot for outlier detection
-                            st.markdown("##### 📦 Box Plot (Outlier Detection)")
+                            st.markdown("##### 📦 Biểu đồ Hộp (Phát hiện Outlier)")
                             fig_box = go.Figure()
                             fig_box.add_trace(go.Box(
                                 y=col_data,
@@ -320,17 +329,17 @@ def render():
                             st.markdown("##### 📊 Phân Vị (Quantiles)")
                             quantiles = col_data.quantile([0.01, 0.05, 0.25, 0.5, 0.75, 0.95, 0.99])
                             quantile_df = pd.DataFrame({
-                                'Phân vị': ['1%', '5%', '25%', '50% (Median)', '75%', '95%', '99%'],
+                                'Quantile': ['1%', '5%', '25%', '50% (Trung vị)', '75%', '95%', '99%'],
                                 'Giá trị': quantiles.values
                             })
                             st.dataframe(
-                                quantile_df.style.format({'Giá trị': '{:.2f}'}),
+                                quantile_df.style.format({'Value': '{:.2f}'}),
                                 width='stretch',
                                 hide_index=True
                             )
                         
                         with stat_col2:
-                            st.markdown("##### ⚠️ Outlier Analysis (IQR Method)")
+                            st.markdown("##### ⚠️ Phân Tích Outlier (Phương pháp IQR)")
                             Q1 = col_data.quantile(0.25)
                             Q3 = col_data.quantile(0.75)
                             IQR = Q3 - Q1
@@ -341,8 +350,8 @@ def render():
                             outlier_pct = (len(outliers) / len(col_data) * 100)
                             
                             outlier_info = pd.DataFrame({
-                                'Metric': ['Lower Bound', 'Upper Bound', 'Số Outliers', 'Tỷ lệ Outliers'],
-                                'Value': [
+                                'Chỉ số': ['Cận dưới', 'Cận trên', 'Số lượng Outlier', 'Tỷ lệ Outlier'],
+                                'Giá trị': [
                                     f"{lower_bound:.2f}",
                                     f"{upper_bound:.2f}",
                                     f"{len(outliers):,}",
@@ -360,7 +369,7 @@ def render():
                         # Skewness
                         skewness = stats.skew(col_data)
                         with dist_cols[0]:
-                            st.metric("Skewness", f"{skewness:.3f}")
+                            st.metric("Độ lệch (Skewness)", f"{skewness:.3f}")
                             if abs(skewness) < 0.5:
                                 st.caption("✅ Gần đối xứng")
                             elif skewness > 0:
@@ -371,39 +380,39 @@ def render():
                         # Kurtosis
                         kurtosis = stats.kurtosis(col_data)
                         with dist_cols[1]:
-                            st.metric("Kurtosis", f"{kurtosis:.3f}")
+                            st.metric("Độ nhọn (Kurtosis)", f"{kurtosis:.3f}")
                             if abs(kurtosis) < 0.5:
                                 st.caption("✅ Phân phối chuẩn")
                             elif kurtosis > 0:
-                                st.caption("📈 Nhọn (peaked)")
+                                st.caption("📈 Nhọn (leptokurtic)")
                             else:
-                                st.caption("📉 Bẹt (flat)")
+                                st.caption("📉 Bẹt (platykurtic)")
                         
                         # Range
                         with dist_cols[2]:
-                            st.metric("Range", f"{col_data.max() - col_data.min():.2f}")
+                            st.metric("Phạm vi (Range)", f"{col_data.max() - col_data.min():.2f}")
                             st.caption("Max - Min")
                         
                         # CV (Coefficient of Variation)
                         cv = (col_data.std() / col_data.mean() * 100) if col_data.mean() != 0 else 0
                         with dist_cols[3]:
-                            st.metric("CV", f"{cv:.2f}%")
+                            st.metric("Hệ số biến thiên (CV)", f"{cv:.2f}%")
                             if cv < 15:
-                                st.caption("✅ Độ biến thiên thấp")
+                                st.caption("✅ Biến động thấp")
                             elif cv < 30:
-                                st.caption("⚠️ Độ biến thiên trung bình")
+                                st.caption("⚠️ Biến động trung bình")
                             else:
-                                st.caption("🔴 Độ biến thiên cao")
+                                st.caption("🔴 Biến động cao")
                         
                         # Value distribution table
                         st.markdown("---")
-                        st.markdown("##### 📋 Phân Bổ Giá Trị (Binned)")
+                        st.markdown("##### 📋 Phân Phối Giá Trị (Binned)")
                         
                         # Bins slider for binned distribution
                         bin_slider_col1, bin_slider_col2 = st.columns([3, 1])
                         with bin_slider_col1:
                             n_bins = st.slider(
-                                f"Số bins cho {selected_numeric_col}:",
+                                f"Number of bins for {selected_numeric_col}:",
                                 min_value=1,
                                 max_value=20,
                                 value=10,
@@ -416,9 +425,9 @@ def render():
                         bin_counts = bins.value_counts().sort_index()
                         
                         bin_df = pd.DataFrame({
-                            'Khoảng giá trị': bin_counts.index.astype(str),
-                            'Số lượng': bin_counts.values,
-                            'Tỷ lệ (%)': (bin_counts.values / len(col_data) * 100).round(2)
+                            'Value Range': bin_counts.index.astype(str),
+                            'Count': bin_counts.values,
+                            'Ratio (%)': (bin_counts.values / len(col_data) * 100).round(2)
                         })
                         
                         st.dataframe(bin_df, width='stretch', hide_index=True)
@@ -426,11 +435,11 @@ def render():
                         # Histogram of bins
                         fig_bin = px.bar(
                             bin_df,
-                            x='Khoảng giá trị',
-                            y='Số lượng',
-                            color='Tỷ lệ (%)',
+                            x='Value Range',
+                            y='Count',
+                            color='Ratio (%)',
                             color_continuous_scale='Viridis',
-                            title=f"Phân bổ giá trị của {selected_numeric_col}"
+                            title=f"Value distribution of {selected_numeric_col}"
                         )
                         fig_bin.update_layout(
                             template="plotly_dark",
@@ -442,35 +451,35 @@ def render():
                 # Categorical columns
                 categorical_data = data.select_dtypes(include=['object', 'category'])
                 if not categorical_data.empty:
-                    st.markdown("#### 📝 Biến Phân Loại")
+                    st.markdown("#### 📝 Categorical Variables")
                     
                     cat_info = []
                     for col in categorical_data.columns:
                         cat_info.append({
-                            'Tên cột': col,
-                            'Số giá trị khác nhau': data[col].nunique(),
-                            'Giá trị phổ biến nhất': data[col].mode()[0] if not data[col].mode().empty else 'N/A',
-                            'Tần suất cao nhất': data[col].value_counts().iloc[0] if len(data[col].value_counts()) > 0 else 0,
-                            'Thiếu': data[col].isnull().sum(),
-                            'Tỷ lệ thiếu (%)': f"{data[col].isnull().sum() / len(data) * 100:.2f}"
+                            'Column Name': col,
+                            'Unique Values': data[col].nunique(),
+                            'Most Common': data[col].mode()[0] if not data[col].mode().empty else 'N/A',
+                            'Top Frequency': data[col].value_counts().iloc[0] if len(data[col].value_counts()) > 0 else 0,
+                            'Missing': data[col].isnull().sum(),
+                            'Missing Ratio (%)': f"{data[col].isnull().sum() / len(data) * 100:.2f}"
                         })
                     
                     cat_df = pd.DataFrame(cat_info)
                     st.dataframe(cat_df, width='stretch')
             
             # Tab 3: Data Distribution
-            elif selected_tab == "📈 Phân Phối Dữ Liệu":
+            elif selected_tab == tabs[2]:
                 st.markdown("### 📈 Phân Phối & Tương Quan Dữ Liệu")
                 
                 viz_type = st.radio(
                     "Chọn loại phân tích:",
-                    ["Correlation Heatmap", "Scatter Plot Matrix", "Scatter Plot (2 Biến)", "Grouped Analysis"],
+                    ["Biểu Đồ Nhiệt Tương Quan", "Ma Trận Biểu Đồ Phân Tán", "Biểu Đồ Phân Tán (2 Biến)", "Phân Tích Theo Nhóm"],
                     horizontal=True,
                     key="viz_type_upload"
                 )
                 
-                if viz_type == "Correlation Heatmap":
-                    st.markdown("#### � Ma Trận Tương Quan")
+                if viz_type == "Biểu Đồ Nhiệt Tương Quan":
+                    st.markdown("#### 🔥 Ma Trận Tương Quan")
                     
                     numeric_data = data.select_dtypes(include=[np.number])
                     if not numeric_data.empty and len(numeric_data.columns) > 1:
@@ -482,7 +491,7 @@ def render():
                             text_auto='.2f',
                             aspect="auto",
                             color_continuous_scale='RdBu_r',
-                            title="Ma trận tương quan giữa các biến",
+                            title="Correlation matrix between variables",
                             zmin=-1,
                             zmax=1
                         )
@@ -497,7 +506,7 @@ def render():
                         # Find high correlations
                         st.markdown("#### 🔍 Các Cặp Biến Có Tương Quan Cao")
                         
-                        threshold = st.slider("Ngưỡng tương quan:", 0.5, 0.95, 0.7, 0.05, key="upload_corr_threshold")
+                        threshold = st.slider("Ngưỡng tương quan:", 0.0, 1.0, 0.7, 0.05, key="upload_corr_threshold")
                         
                         high_corr = []
                         for i in range(len(corr_matrix.columns)):
@@ -517,8 +526,8 @@ def render():
                     else:
                         st.warning("Cần ít nhất 2 biến số để tạo ma trận tương quan.")
                 
-                elif viz_type == "Scatter Plot Matrix":
-                    st.markdown("#### 🔷 Scatter Plot Matrix (Pair Plot)")
+                elif viz_type == "Ma Trận Biểu Đồ Phân Tán":
+                    st.markdown("#### 🔷 Ma Trận Biểu Đồ Phân Tán (Pair Plot)")
                     st.caption("Hiển thị mối quan hệ giữa từng cặp biến số")
                     
                     numeric_cols = data.select_dtypes(include=[np.number]).columns.tolist()
@@ -526,7 +535,7 @@ def render():
                         # Allow selection of variables
                         max_vars = min(5, len(numeric_cols))
                         selected_vars = st.multiselect(
-                            "Chọn các biến để hiển thị (tối đa 5):",
+                            "Chọn biến để hiển thị (tối đa 5):",
                             numeric_cols,
                             default=numeric_cols[:max_vars],
                             max_selections=5,
@@ -545,21 +554,21 @@ def render():
                             fig.update_layout(
                                 template="plotly_dark",
                                 height=800,
-                                title="Scatter Plot Matrix - Phân tích quan hệ từng cặp biến"
+                                title="Scatter Plot Matrix - Pairwise relationship analysis"
                             )
                             
                             fig.update_traces(diagonal_visible=False, showupperhalf=False)
                             
                             st.plotly_chart(fig, width='stretch')
                             
-                            st.info("💡 **Gợi ý**: Tìm kiếm các pattern tuyến tính hoặc phi tuyến giữa các cặp biến.")
+                            st.info("💡 **Mẹo**: Tìm kiếm các mẫu tuyến tính hoặc phi tuyến tính giữa các cặp biến.")
                         else:
                             st.warning("Vui lòng chọn ít nhất 2 biến.")
                     else:
-                        st.warning("Cần ít nhất 2 biến số để tạo Scatter Plot Matrix.")
+                        st.warning("Cần ít nhất 2 biến số để tạo Ma Trận Biểu Đồ Phân Tán.")
                 
-                elif viz_type == "Scatter Plot (2 Biến)":
-                    st.markdown("#### � Phân Tích Chi Tiết 2 Biến")
+                elif viz_type == "Biểu Đồ Phân Tán (2 Biến)":
+                    st.markdown("#### 📊 Phân Tích Chi Tiết 2 Biến")
                     
                     numeric_cols = data.select_dtypes(include=[np.number]).columns.tolist()
                     if len(numeric_cols) >= 2:
@@ -611,7 +620,7 @@ def render():
                         
                         metric_col1, metric_col2, metric_col3 = st.columns(3)
                         with metric_col1:
-                            st.metric("Tương quan Pearson", f"{corr:.3f}")
+                            st.metric("Tương Quan Pearson", f"{corr:.3f}")
                         with metric_col2:
                             if abs(corr) >= 0.7:
                                 st.metric("Mức độ", "Mạnh 💪", delta="Tương quan cao")
@@ -622,11 +631,11 @@ def render():
                         with metric_col3:
                             st.metric("Loại", "Dương ↗️" if corr > 0 else "Âm ↘️")
                     else:
-                        st.warning("Cần ít nhất 2 biến số.")
+                        st.warning("Need at least 2 numeric variables.")
                 
                 else:  # Grouped Analysis
                     st.markdown("#### 📦 Phân Tích Theo Nhóm")
-                    st.caption("So sánh phân phối biến số theo các nhóm phân loại")
+                    st.caption("So sánh phân phối biến số qua các nhóm phân loại")
                     
                     numeric_cols = data.select_dtypes(include=[np.number]).columns.tolist()
                     cat_cols = data.select_dtypes(include=['object', 'category']).columns.tolist()
@@ -661,7 +670,7 @@ def render():
                                 x=cat_var,
                                 y=num_var,
                                 color=cat_var,
-                                title=f"Phân phối {num_var} theo {cat_var}",
+                                title=f"Phân phối của {num_var} theo {cat_var}",
                                 points="outliers"
                             )
                         elif plot_type == "Violin Plot":
@@ -670,7 +679,7 @@ def render():
                                 x=cat_var,
                                 y=num_var,
                                 color=cat_var,
-                                title=f"Phân phối {num_var} theo {cat_var}",
+                                title=f"Phân phối của {num_var} theo {cat_var}",
                                 box=True,
                                 points="outliers"
                             )
@@ -680,7 +689,7 @@ def render():
                                 x=cat_var,
                                 y=num_var,
                                 color=cat_var,
-                                title=f"Phân phối {num_var} theo {cat_var}"
+                                title=f"Phân phối của {num_var} theo {cat_var}"
                             )
                         
                         fig.update_layout(
@@ -694,10 +703,10 @@ def render():
                         # Statistics by group
                         st.markdown("#### 📊 Thống Kê Theo Nhóm")
                         group_stats = plot_data.groupby(cat_var)[num_var].agg([
-                            ('Số lượng', 'count'),
-                            ('Trung bình', 'mean'),
-                            ('Trung vị', 'median'),
-                            ('Độ lệch chuẩn', 'std'),
+                            ('Count', 'count'),
+                            ('Mean', 'mean'),
+                            ('Median', 'median'),
+                            ('Std Dev', 'std'),
                             ('Min', 'min'),
                             ('Max', 'max')
                         ]).round(2)
@@ -710,8 +719,8 @@ def render():
                             st.warning("Không có biến phân loại nào trong dữ liệu.")
             
             # Tab 4: AI Analysis
-            elif selected_tab == "🤖 Phân Tích AI":
-                st.markdown("### 🤖 Phân Tích Tự Động Bằng AI")
+            elif selected_tab == tabs[3]:
+                st.markdown("### ✨ Phân Tích Tự Động Bằng AI")
                 
                 # Check LLM configuration
                 is_llm_configured = LLMConfig.is_configured()
@@ -987,16 +996,17 @@ QUAN TRỌNG:
             st.markdown("---")
             
             # Use session state to track current tab (workaround for st.tabs not preserving state)
-            if 'current_eda_tab_cached' not in st.session_state:
+            tab_options = ["📋 Dữ Liệu Mẫu", "📊 Thống Kê Mô Tả", "📈 Phân Phối Dữ Liệu", "✨ Phân Tích AI"]
+            if 'current_eda_tab_cached' not in st.session_state or st.session_state.current_eda_tab_cached not in tab_options:
                 st.session_state.current_eda_tab_cached = "📋 Dữ Liệu Mẫu"
             
             # Tab selector using radio (preserves state on rerun)
             selected_tab = st.radio(
                 "Chọn mục:",
-                ["📋 Dữ Liệu Mẫu", "📊 Thống Kê Mô Tả", "📈 Phân Phối Dữ Liệu", "🤖 Phân Tích AI"],
+                tab_options,
                 horizontal=True,
                 key="eda_tab_selector_cached",
-                index=["📋 Dữ Liệu Mẫu", "📊 Thống Kê Mô Tả", "📈 Phân Phối Dữ Liệu", "🤖 Phân Tích AI"].index(st.session_state.current_eda_tab_cached)
+                index=tab_options.index(st.session_state.current_eda_tab_cached)
             )
             st.session_state.current_eda_tab_cached = selected_tab
             
@@ -1160,17 +1170,17 @@ QUAN TRỌNG:
                     cat_df = pd.DataFrame(cat_info)
                     st.dataframe(cat_df, width='stretch')
             
-            elif selected_tab == "📈 Phân Phối Dữ Liệu":
+            elif selected_tab == tabs[2]:
                 st.markdown("### 📈 Phân Phối & Tương Quan Dữ Liệu")
                 
                 viz_type = st.radio(
                     "Chọn loại phân tích:",
-                    ["Correlation Heatmap", "Scatter Plot (2 Biến)"],
+                    ["Biểu Đồ Nhiệt Tương Quan", "Biểu Đồ Phân Tán (2 Biến)"],
                     horizontal=True,
                     key="viz_type_cached"
                 )
                 
-                if viz_type == "Correlation Heatmap":
+                if viz_type == "Biểu Đồ Nhiệt Tương Quan":
                     st.markdown("#### 🔥 Ma Trận Tương Quan")
                     
                     numeric_data = data.select_dtypes(include=[np.number])
@@ -1198,7 +1208,7 @@ QUAN TRỌNG:
                         # Find high correlations
                         st.markdown("#### 🔍 Các Cặp Biến Có Tương Quan Cao")
                         
-                        threshold = st.slider("Ngưỡng tương quan:", 0.5, 0.95, 0.7, 0.05, key="cached_corr_threshold")
+                        threshold = st.slider("Ngưỡng tương quan:", 0.0, 1.0, 0.7, 0.05, key="cached_corr_threshold")
                         
                         high_corr = []
                         for i in range(len(corr_matrix.columns)):
@@ -1268,14 +1278,14 @@ QUAN TRỌNG:
                             elif abs(corr) >= 0.4:
                                 st.metric("Mức độ", "Trung bình ⚖️", delta="Tương quan vừa")
                             else:
-                                st.metric("Mức độ", "Yếu �", delta="Tương quan thấp")
+                                st.metric("Mức độ", "Yếu 📉", delta="Tương quan thấp")
                         with metric_col3:
                             st.metric("Loại", "Dương ↗️" if corr > 0 else "Âm ↘️")
                     else:
                         st.warning("Cần ít nhất 2 biến số.")
             
-            elif selected_tab == "🤖 Phân Tích AI":
-                st.markdown("### 🤖 Phân Tích Tự Động Bằng AI")
+            elif selected_tab == tabs[3]:
+                st.markdown("### ✨ Phân Tích Tự Động Bằng AI")
                 
                 # Check LLM configuration
                 is_llm_configured = LLMConfig.is_configured()
@@ -1523,11 +1533,11 @@ QUAN TRỌNG:
         
         # No data at all - show sample format
         print("DEBUG: No file uploaded, showing sample format")
-        st.info("📝 No file uploaded. Please select a CSV file.")
+        st.info("📝 Chưa có file tải lên. Vui lòng chọn file CSV.")
         
-        with st.expander("📋 View Sample Format"):
+        with st.expander("📋 Xem Mẫu Định Dạng"):
             st.markdown("""
-            CSV file should have the following format:
+            File CSV cần theo định dạng sau:
             
             | customer_id | age | income | credit_history | loan_amount | ... | default |
             |-------------|-----|--------|----------------|-------------|-----|---------|
@@ -1535,8 +1545,8 @@ QUAN TRỌNG:
             | 1002        | 42  | 75000  | excellent      | 15000       | ... | 0       |
             | 1003        | 28  | 30000  | poor           | 5000        | ... | 1       |
             
-            - Last column is target: 0 = no default, 1 = default
-            - Other columns are features
+            - Cột cuối cùng là nhãn (target): 0 = không vỡ nợ, 1 = vỡ nợ
+            - Các cột khác là đặc trưng (features)
             """)
             
             # Simple basic sample only - no complex loading
@@ -1554,7 +1564,7 @@ QUAN TRỌNG:
             
             csv = sample_data.to_csv(index=False).encode('utf-8')
             st.download_button(
-                "📥 Download Sample Data",
+                "📥 Tải Về Dữ Liệu Mẫu",
                 csv,
                 "sample_credit_data.csv",
                 "text/csv"

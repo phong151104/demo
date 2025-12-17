@@ -52,7 +52,7 @@ def render():
             # Sử dụng placeholder để tránh nút bị nhân đôi khi đang xử lý
             button_placeholder = st.empty()
             
-            if button_placeholder.button("🔄 Khởi Tạo SHAP Explainer", key="init_shap_btn", type="primary", use_container_width=True):
+            if button_placeholder.button("🔄 Khởi Tạo SHAP Explainer", key="init_shap_btn", type="primary", width='stretch'):
                 # Xóa nút và thay bằng spinner
                 button_placeholder.empty()
                 
@@ -100,7 +100,7 @@ def render():
     tab1, tab2, tab3 = st.tabs([
         "🌍 Global Explanation",
         "🎯 Local Explanation",
-        "🤖 AI Interpretation"
+        "✨ AI Interpretation"
     ])
     
     # Tab 1: Global Explanation
@@ -399,17 +399,24 @@ def render():
     
     # Tab 3: AI Interpretation
     with tab3:
-        st.markdown("### 🤖 Giải Thích Bằng AI")
-        st.markdown("Phân tích và diễn giải kết quả SHAP bằng ngôn ngữ tự nhiên với Google Gemini AI.")
+        # Professional header with gradient
+        st.markdown("""
+        <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); 
+                    padding: 1.5rem; border-radius: 12px; margin-bottom: 1.5rem;
+                    border: 1px solid rgba(102, 126, 234, 0.3);">
+            <h3 style="margin: 0 0 0.5rem 0; color: #fff;">✨ Giải Thích Bằng AI</h3>
+            <p style="margin: 0; color: rgba(255,255,255,0.7); font-size: 0.95rem;">
+                Phân tích và diễn giải kết quả SHAP bằng ngôn ngữ tự nhiên với AI.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
         
         # Import SHAP Analyzer
         from backend.llm_integration import create_shap_analyzer, LLMConfig
         
-        # Check API configuration (Google Gemini)
+        # Check API configuration (Google Gemini) - only show warning if not configured
         api_configured = LLMConfig.GOOGLE_API_KEY is not None
-        if api_configured:
-            st.success(f"✅ Đã kết nối với Google Gemini ({LLMConfig.GOOGLE_MODEL})")
-        else:
+        if not api_configured:
             st.warning("⚠️ Chưa cấu hình GOOGLE_API_KEY. Sử dụng phân tích tự động (hạn chế). Xem file `env.example` để cấu hình.")
         
         # Get model name
@@ -418,10 +425,50 @@ def render():
         # Convert expected_value to scalar for display
         exp_val_display = float(expected_value[1]) if isinstance(expected_value, np.ndarray) and len(expected_value) > 1 else (float(expected_value[0]) if isinstance(expected_value, np.ndarray) else float(expected_value))
         
+        # SHAP Statistics Cards - 3 columns with gradient cards
+        stat_col1, stat_col2, stat_col3 = st.columns(3)
+        
+        with stat_col1:
+            st.markdown(f"""
+            <div style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); 
+                        padding: 1.2rem; border-radius: 10px; text-align: center;
+                        border: 1px solid rgba(102, 126, 234, 0.3);">
+                <p style="margin: 0; color: rgba(255,255,255,0.7); font-size: 0.85rem;">Số Mẫu Đã Tính</p>
+                <h2 style="margin: 0.3rem 0 0 0; color: #fff; font-size: 1.8rem;">{len(X_explained)}</h2>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with stat_col2:
+            st.markdown(f"""
+            <div style="background: linear-gradient(135deg, #134e5e 0%, #71b280 100%); 
+                        padding: 1.2rem; border-radius: 10px; text-align: center;
+                        border: 1px solid rgba(113, 178, 128, 0.3);">
+                <p style="margin: 0; color: rgba(255,255,255,0.7); font-size: 0.85rem;">Số Features</p>
+                <h2 style="margin: 0.3rem 0 0 0; color: #fff; font-size: 1.8rem;">{len(features)}</h2>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with stat_col3:
+            st.markdown(f"""
+            <div style="background: linear-gradient(135deg, #ff6b6b 0%, #feca57 100%); 
+                        padding: 1.2rem; border-radius: 10px; text-align: center;
+                        border: 1px solid rgba(254, 202, 87, 0.3);">
+                <p style="margin: 0; color: rgba(255,255,255,0.9); font-size: 0.85rem;">Mean |SHAP|</p>
+                <h2 style="margin: 0.3rem 0 0 0; color: #fff; font-size: 1.8rem;">{np.abs(shap_values).mean():.3f}</h2>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # Main content area
         col1, col2 = st.columns([2, 1])
         
         with col1:
-            st.markdown("#### 💬 Phân Tích Tự Động")
+            st.markdown("""
+            <div style="background-color: rgba(38, 39, 48, 0.8); padding: 1rem 1.2rem; border-radius: 8px; margin-bottom: 1rem;">
+                <h4 style="margin: 0; color: #667eea;">💬 Phân Tích Tự Động</h4>
+            </div>
+            """, unsafe_allow_html=True)
             
             analysis_type = st.radio(
                 "Loại phân tích:",
@@ -437,8 +484,8 @@ def render():
                     key="analysis_sample"
                 )
             
-            if st.button("🤖 Tạo Phân Tích AI", width='stretch', type="primary"):
-                with st.spinner("🤖 AI đang phân tích SHAP values... (có thể mất vài giây)"):
+            if st.button("✨ Tạo Phân Tích AI", width='stretch', type="primary"):
+                with st.spinner("✨ AI đang phân tích SHAP values..."):
                     try:
                         # Create SHAP Analyzer
                         shap_analyzer = create_shap_analyzer()
@@ -474,22 +521,33 @@ def render():
             
             # Display last analysis
             if 'last_ai_analysis' in st.session_state and st.session_state.last_ai_analysis:
-                with st.expander("🔍 Phân Tích Tự Động (AI Analysis)", expanded=True):
+                with st.expander("📋 Kết Quả Phân Tích AI", expanded=True):
                     st.markdown(st.session_state.last_ai_analysis)
         
         with col2:
-            st.markdown("#### ⚙️ Thông Tin SHAP")
+            st.markdown("""
+            <div style="background-color: rgba(38, 39, 48, 0.8); padding: 1rem 1.2rem; border-radius: 8px; margin-bottom: 1rem;">
+                <h4 style="margin: 0; color: #667eea;">📊 Chi Tiết SHAP</h4>
+            </div>
+            """, unsafe_allow_html=True)
             
             st.markdown(f"""
-            <div style="background-color: #262730; padding: 1rem; border-radius: 8px;">
-                <h4 style="margin-top: 0; color: #667eea;">📊 SHAP Statistics</h4>
-                <p style="font-size: 0.9rem; margin-bottom: 0;">
-                    • Số mẫu đã tính: {len(X_explained)}<br>
-                    • Số features: {len(features)}<br>
-                    • Expected value: {exp_val_display:.4f}<br>
-                    • Mean |SHAP|: {np.abs(shap_values).mean():.4f}<br>
-                    • Max |SHAP|: {np.abs(shap_values).max():.4f}
-                </p>
+            <div style="background: linear-gradient(180deg, #1f2937 0%, #262730 100%); 
+                        padding: 1rem; border-radius: 8px; border: 1px solid rgba(102, 126, 234, 0.2);">
+                <table style="width: 100%; color: rgba(255,255,255,0.85); font-size: 0.9rem;">
+                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+                        <td style="padding: 0.5rem 0;">Expected Value</td>
+                        <td style="padding: 0.5rem 0; text-align: right; font-weight: 600;">{exp_val_display:.4f}</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+                        <td style="padding: 0.5rem 0;">Max |SHAP|</td>
+                        <td style="padding: 0.5rem 0; text-align: right; font-weight: 600;">{np.abs(shap_values).max():.4f}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 0.5rem 0;">Model</td>
+                        <td style="padding: 0.5rem 0; text-align: right; font-weight: 600; color: #667eea;">{model_name_display}</td>
+                    </tr>
+                </table>
             </div>
             """, unsafe_allow_html=True)
             
@@ -507,12 +565,13 @@ def render():
         
         st.markdown("---")
         
-        # Interactive Chat Q&A
-        st.markdown("#### 💬 Chat Với AI Về Mô Hình")
-        
+        # Interactive Chat Q&A with improved styling
         st.markdown("""
-        <div style="background-color: #262730; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
-            <p style="margin: 0;">💡 Đặt câu hỏi về mô hình và nhận câu trả lời từ AI dựa trên SHAP analysis thực tế.</p>
+        <div style="background-color: rgba(38, 39, 48, 0.8); padding: 1rem 1.2rem; border-radius: 8px; margin-bottom: 1rem;">
+            <h4 style="margin: 0 0 0.3rem 0; color: #667eea;">💬 Chat Với AI Về Mô Hình</h4>
+            <p style="margin: 0; color: rgba(255,255,255,0.6); font-size: 0.85rem;">
+                Đặt câu hỏi về mô hình và nhận câu trả lời từ AI dựa trên SHAP analysis.
+            </p>
         </div>
         """, unsafe_allow_html=True)
         
@@ -520,26 +579,32 @@ def render():
         if 'shap_chat_history' not in st.session_state:
             st.session_state.shap_chat_history = []
         
-        # Display chat history
-        chat_container = st.container()
-        with chat_container:
-            for msg in st.session_state.shap_chat_history:
-                if msg['role'] == 'user':
-                    st.markdown(f"""
-                    <div style="background-color: #1e3c72; padding: 1rem; border-radius: 10px; margin-bottom: 0.5rem; border-left: 4px solid #667eea;">
-                        <strong>🧑 Bạn:</strong> {msg['content']}
-                    </div>
-                    """, unsafe_allow_html=True)
-                else:
-                    st.markdown(f"""
-                    <div style="background-color: #262730; padding: 1rem; border-radius: 10px; margin-bottom: 0.5rem; border-left: 4px solid #44bb44;">
-                        <strong>🤖 AI:</strong>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    st.markdown(msg['content'])
+        # Display chat history with improved styling
+        if st.session_state.shap_chat_history:
+            chat_container = st.container()
+            with chat_container:
+                for msg in st.session_state.shap_chat_history:
+                    if msg['role'] == 'user':
+                        st.markdown(f"""
+                        <div style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); 
+                                    padding: 1rem; border-radius: 10px; margin-bottom: 0.8rem;
+                                    border-left: 4px solid #667eea;">
+                            <strong style="color: #a8c0ff;">🧑 Bạn:</strong>
+                            <p style="margin: 0.5rem 0 0 0; color: rgba(255,255,255,0.9);">{msg['content']}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"""
+                        <div style="background: linear-gradient(135deg, #1f2937 0%, #2d3748 100%); 
+                                    padding: 1rem; border-radius: 10px; margin-bottom: 0.8rem;
+                                    border-left: 4px solid #48bb78;">
+                            <strong style="color: #9ae6b4;">✨ AI:</strong>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        st.markdown(msg['content'])
         
-        # Chat input
-        col_input, col_btn = st.columns([4, 1])
+        # Chat input with better styling
+        col_input, col_btn = st.columns([5, 1])
         with col_input:
             user_question = st.text_input(
                 "Câu hỏi của bạn:",
@@ -551,7 +616,7 @@ def render():
             send_clicked = st.button("📤 Gửi", key="send_question", width='stretch', type="primary")
         
         if send_clicked and user_question:
-            with st.spinner("🤖 AI đang suy nghĩ..."):
+            with st.spinner("✨ AI đang suy nghĩ..."):
                 try:
                     # Create SHAP Analyzer
                     shap_analyzer = create_shap_analyzer()
@@ -591,7 +656,7 @@ def render():
                 st.session_state.shap_chat_history = []
                 st.rerun()
         
-        # Sample questions
+        # Sample questions with better card styling
         st.markdown("---")
         st.markdown("##### 💡 Câu Hỏi Gợi Ý")
         
@@ -615,7 +680,7 @@ def render():
             selected_q = st.session_state.sample_question_selected
             st.session_state.sample_question_selected = None  # Clear
             
-            with st.spinner("🤖 AI đang suy nghĩ..."):
+            with st.spinner("✨ AI đang suy nghĩ..."):
                 try:
                     shap_analyzer = create_shap_analyzer()
                     
