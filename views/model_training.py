@@ -172,16 +172,30 @@ def render():
                 
                 st.markdown("#### 1️⃣ Chọn Mô Hình")
                 
+                # Define model list
+                model_list = [
+                    "Logistic Regression",
+                    "Random Forest",
+                    "XGBoost",
+                    "LightGBM",
+                    "CatBoost",
+                    "Gradient Boosting"
+                ]
+                
+                # Get default index from last trained model or previous selection
+                default_idx = 0
+                last_trained_model = st.session_state.get('_training_model_type', None)
+                prev_selected = st.session_state.get('model_type_select', None)
+                
+                if prev_selected and prev_selected in model_list:
+                    default_idx = model_list.index(prev_selected)
+                elif last_trained_model and last_trained_model in model_list:
+                    default_idx = model_list.index(last_trained_model)
+                
                 model_type = st.selectbox(
                     "Loại mô hình:",
-                    [
-                        "Logistic Regression",
-                        "Random Forest",
-                        "XGBoost",
-                        "LightGBM",
-                        "CatBoost",
-                        "Gradient Boosting"
-                    ],
+                    model_list,
+                    index=default_idx,
                     key="model_type_select"
                 )
                 
@@ -196,6 +210,25 @@ def render():
                 st.markdown("---")
                 
                 st.markdown("#### 3️⃣ Tham Số Mô Hình")
+                
+                # Detect model type change and clear widget keys to avoid conflicts
+                # ONLY clear if user actively changed model (not on first load or after training)
+                prev_model_type = st.session_state.get('_prev_model_type', None)
+                if prev_model_type is not None and prev_model_type != model_type:
+                    # User actually changed model - clear parameter-related keys
+                    keys_to_clear = ['n_trees', 'max_depth', 'lr', 'subsample', 'min_samples_split', 
+                                    'unlimited_depth', 'lr_c', 'lr_iter']
+                    for key in keys_to_clear:
+                        if key in st.session_state:
+                            del st.session_state[key]
+                    # Also clear best_tuned_params if model changed
+                    if 'best_tuned_params' in st.session_state:
+                        del st.session_state['best_tuned_params']
+                    if 'tuning_results' in st.session_state:
+                        del st.session_state['tuning_results']
+                
+                # Always update prev model type to current selection
+                st.session_state._prev_model_type = model_type
                 
                 # Show applied params notification
                 if st.session_state.get('best_tuned_params') and st.session_state.get('_params_applied_success', False):
@@ -262,9 +295,17 @@ def render():
                     default_max_depth = max(3, min(20, default_max_depth))
                     default_min_samples_split = max(2, min(20, default_min_samples_split))
                     
-                    n_estimators = st.slider("Số cây (n_estimators):", 50, 500, int(default_n_estimators), 10, key="n_trees")
-                    max_depth = st.slider("Độ sâu tối đa:", 3, 20, int(default_max_depth), 1, key="max_depth")
-                    min_samples_split = st.slider("Min samples split:", 2, 20, int(default_min_samples_split), 1, key="min_samples_split")
+                    # Set session state only if key doesn't exist (avoids Streamlit widget conflict)
+                    if 'n_trees' not in st.session_state:
+                        st.session_state.n_trees = int(default_n_estimators)
+                    if 'max_depth' not in st.session_state:
+                        st.session_state.max_depth = int(default_max_depth)
+                    if 'min_samples_split' not in st.session_state:
+                        st.session_state.min_samples_split = int(default_min_samples_split)
+                    
+                    n_estimators = st.slider("Số cây (n_estimators):", 50, 500, step=10, key="n_trees")
+                    max_depth = st.slider("Độ sâu tối đa:", 3, 20, step=1, key="max_depth")
+                    min_samples_split = st.slider("Min samples split:", 2, 20, step=1, key="min_samples_split")
                     params['n_estimators'] = n_estimators
                     params['max_depth'] = max_depth
                     params['min_samples_split'] = min_samples_split
@@ -286,13 +327,24 @@ def render():
                     default_learning_rate = max(0.01, min(0.3, default_learning_rate))
                     default_subsample = max(0.5, min(1.0, default_subsample))
                     
-                    n_estimators = st.slider("Số cây (n_estimators):", 50, 500, int(default_n_estimators), 10, key="n_trees")
+                    # Set session state only if key doesn't exist (avoids Streamlit widget conflict)
+                    if 'n_trees' not in st.session_state:
+                        st.session_state.n_trees = int(default_n_estimators)
+                    if 'max_depth' not in st.session_state:
+                        st.session_state.max_depth = int(default_max_depth)
+                    if 'lr' not in st.session_state:
+                        st.session_state.lr = float(default_learning_rate)
+                    if 'subsample' not in st.session_state:
+                        st.session_state.subsample = float(default_subsample)
+                    if 'unlimited_depth' not in st.session_state:
+                        st.session_state.unlimited_depth = is_unlimited_depth
+                    
+                    n_estimators = st.slider("Số cây (n_estimators):", 50, 500, step=10, key="n_trees")
                     
                     # For LightGBM, allow unlimited depth option
                     if model_type == "LightGBM":
                         unlimited_depth = st.checkbox(
                             "🔓 Không giới hạn độ sâu (max_depth = -1)", 
-                            value=is_unlimited_depth,
                             key="unlimited_depth",
                             help="Trong LightGBM, max_depth=-1 cho phép cây phát triển không giới hạn. Có thể tăng hiệu suất nhưng cũng tăng nguy cơ overfitting."
                         )
@@ -300,12 +352,12 @@ def render():
                             max_depth = -1
                             st.info("💡 Độ sâu không giới hạn - cây sẽ phát triển dựa trên num_leaves")
                         else:
-                            max_depth = st.slider("Độ sâu tối đa:", 3, 20, int(default_max_depth), 1, key="max_depth")
+                            max_depth = st.slider("Độ sâu tối đa:", 3, 20, step=1, key="max_depth")
                     else:
-                        max_depth = st.slider("Độ sâu tối đa:", 3, 20, int(default_max_depth), 1, key="max_depth")
+                        max_depth = st.slider("Độ sâu tối đa:", 3, 20, step=1, key="max_depth")
                     
-                    learning_rate = st.slider("Learning rate:", 0.01, 0.3, float(default_learning_rate), 0.01, key="lr")
-                    subsample = st.slider("Subsample:", 0.5, 1.0, float(default_subsample), 0.1, key="subsample")
+                    learning_rate = st.slider("Learning rate:", 0.01, 0.3, step=0.01, key="lr")
+                    subsample = st.slider("Subsample:", 0.5, 1.0, step=0.1, key="subsample")
                     params['n_estimators'] = n_estimators
                     params['max_depth'] = max_depth
                     params['learning_rate'] = learning_rate
@@ -320,6 +372,9 @@ def render():
                         st.session_state._training_model_type = model_type
                         st.session_state._training_params = params
                         st.session_state._training_in_progress = True
+                        # Preserve tuning method selection during training
+                        if 'tuning_method' in st.session_state:
+                            st.session_state._last_tuning_method = st.session_state.tuning_method
                         st.rerun()
             
             with col2:
@@ -447,12 +502,31 @@ def render():
                             st.code(traceback.format_exc())
                 
                 with st.expander("Hyperparameter Tuning"):
+                    # Define tuning methods list
+                    tuning_methods = ["Grid Search", "Random Search", "Optuna (Bayesian)", "Bayesian Optimization"]
+                    
+                    # Get default index from saved tuning method
+                    tuning_default_idx = 0
+                    saved_method = st.session_state.get('_last_tuning_method', None)
+                    if saved_method and saved_method in tuning_methods:
+                        tuning_default_idx = tuning_methods.index(saved_method)
+                    
                     tuning_method = st.selectbox(
                         "Phương pháp:",
-                        ["Grid Search", "Random Search", "Bayesian Optimization"],
+                        tuning_methods,
+                        index=tuning_default_idx,
                         key="tuning_method"
                     )
+                    
+                    # Update saved method when user changes selection
+                    st.session_state._last_tuning_method = tuning_method
+                    
                     tuning_cv_folds = st.slider("Số folds cho CV:", 3, 10, 5, key="tuning_cv_folds")
+                    
+                    # Show n_trials slider for Optuna/Bayesian
+                    if "Optuna" in tuning_method or "Bayesian" in tuning_method:
+                        n_trials = st.slider("Số trials:", 20, 200, 50, key="n_trials")
+                        st.caption("💡 Optuna sử dụng TPE (Tree-structured Parzen Estimator) để tối ưu thông minh")
                     
                     if st.button("🔍 Tìm Tham Số Tốt Nhất", key="tune_params"):
                         try:
@@ -470,13 +544,27 @@ def render():
                                 # Import backend
                                 from backend.models.trainer import hyperparameter_tuning
                                 
+                                # Get n_trials for Optuna methods
+                                n_trials_val = st.session_state.get('n_trials', 50) if ("Optuna" in tuning_method or "Bayesian" in tuning_method) else 50
+                                
+                                # Map UI method name to backend expected name
+                                method_map = {
+                                    "Grid Search": "Grid Search",
+                                    "Random Search": "Random Search",
+                                    "Optuna (Bayesian)": "Optuna",
+                                    "Bayesian Optimization": "Bayesian Optimization"
+                                }
+                                backend_method = method_map.get(tuning_method, tuning_method)
+                                
                                 # Run hyperparameter tuning
                                 tuning_results = hyperparameter_tuning(
-                                    X, y, current_model_type, tuning_method, tuning_cv_folds
+                                    X, y, current_model_type, backend_method, tuning_cv_folds, n_trials_val
                                 )
                                 
                                 # Save to session state and rerun to display results
                                 st.session_state.tuning_results = tuning_results
+                                # Save the tuning method to preserve selection after rerun
+                                st.session_state._last_tuning_method = tuning_method
                             
                             st.rerun()
                                 

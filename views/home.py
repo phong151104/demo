@@ -278,7 +278,7 @@ def render():
             </div>
             """, unsafe_allow_html=True)
             
-            if st.button(f"Đi đến {feature['title']}", key=f"nav_{feature['title']}", use_container_width=True):
+            if st.button(f"Đi đến {feature['title']}", key=f"nav_{feature['title']}", width='stretch'):
                 st.session_state.nav_page = feature['nav_key']
                 st.rerun()
 

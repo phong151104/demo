@@ -11,6 +11,7 @@ xgboost==2.0.3
 lightgbm==4.1.0
 catboost==1.2.2
 imbalanced-learn==0.12.4
+optuna==3.5.0
 
 # Model Explanation
 shap==0.44.0
