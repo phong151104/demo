@@ -105,98 +105,232 @@ def render():
                 
                 # Show charts header if enabled
                 if show_charts:
-                    st.markdown("---")
-                    
-                    # Generate mini charts as base64 images for each column
+                        # Create header row with visualizations - REDESIGNED
                     import base64
                     from io import BytesIO
                     import matplotlib
                     matplotlib.use('Agg')
                     import matplotlib.pyplot as plt
                     
-                    # Create header row with visualizations
-                    header_html = "<div style='overflow-x: auto;'><table style='width: 100%; border-collapse: collapse; font-size: 0.85rem;'>"
+                    # CSS for enhanced cards
+                    st.markdown("""
+                    <style>
+                    .feature-cards-container {
+                        display: flex;
+                        overflow-x: auto;
+                        gap: 1rem;
+                        padding: 1rem 0;
+                        scrollbar-width: thin;
+                    }
+                    .feature-cards-container::-webkit-scrollbar {
+                        height: 8px;
+                    }
+                    .feature-cards-container::-webkit-scrollbar-thumb {
+                        background: #667eea;
+                        border-radius: 4px;
+                    }
+                    .feature-card {
+                        min-width: 180px;
+                        max-width: 200px;
+                        background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
+                        border-radius: 16px;
+                        padding: 1rem;
+                        border: 1px solid rgba(102, 126, 234, 0.2);
+                        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+                        transition: all 0.3s ease;
+                        flex-shrink: 0;
+                    }
+                    .feature-card:hover {
+                        transform: translateY(-4px);
+                        border-color: rgba(102, 126, 234, 0.5);
+                        box-shadow: 0 8px 30px rgba(102, 126, 234, 0.2);
+                    }
+                    .feature-card-header {
+                        font-weight: 700;
+                        font-size: 0.9rem;
+                        color: #e2e8f0;
+                        margin-bottom: 0.8rem;
+                        text-align: center;
+                        white-space: nowrap;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                    }
+                    .feature-card-chart {
+                        text-align: center;
+                        margin-bottom: 0.8rem;
+                        background: rgba(0,0,0,0.2);
+                        border-radius: 8px;
+                        padding: 0.5rem;
+                    }
+                    .feature-card-chart img {
+                        width: 100%;
+                        max-width: 160px;
+                        height: 60px;
+                        object-fit: contain;
+                    }
+                    .feature-card-stats {
+                        display: grid;
+                        grid-template-columns: 1fr 1fr;
+                        gap: 0.4rem;
+                        font-size: 0.75rem;
+                        margin-bottom: 0.6rem;
+                    }
+                    .stat-item {
+                        background: rgba(30, 41, 59, 0.8);
+                        padding: 0.3rem 0.5rem;
+                        border-radius: 6px;
+                        text-align: center;
+                    }
+                    .stat-label {
+                        color: #64748b;
+                        font-size: 0.65rem;
+                        display: block;
+                    }
+                    .stat-value {
+                        color: #e2e8f0;
+                        font-weight: 600;
+                        font-size: 0.8rem;
+                    }
+                    .feature-card-footer {
+                        text-align: center;
+                        padding-top: 0.5rem;
+                        border-top: 1px solid rgba(100, 116, 139, 0.2);
+                    }
+                    .missing-ok {
+                        color: #10b981;
+                        font-size: 0.75rem;
+                        font-weight: 500;
+                    }
+                    .missing-warn {
+                        color: #f59e0b;
+                        font-size: 0.75rem;
+                        font-weight: 500;
+                    }
+                    </style>
+                    """, unsafe_allow_html=True)
                     
-                    # Header row with charts
-                    header_html += "<tr style='background-color: #1e1e1e;'>"
+                    # Build cards HTML
+                    cards_html = '<div class="feature-cards-container">'
                     
                     for col_name in data.columns:
                         col_data = data[col_name]
-                        header_html += f"<td style='border: 1px solid #444; padding: 10px; text-align: center; vertical-align: top; min-width: 120px;'>"
-                        header_html += f"<div style='font-weight: bold; margin-bottom: 5px;'>{col_name}</div>"
+                        
+                        cards_html += '<div class="feature-card">'
+                        cards_html += f'<div class="feature-card-header" title="{col_name}">{col_name}</div>'
                         
                         # Generate chart
+                        chart_html = ""
+                        stats_html = ""
+                        
                         if pd.api.types.is_numeric_dtype(col_data):
                             # Numeric - Histogram
                             col_clean = col_data.dropna()
                             if len(col_clean) > 0:
-                                fig, ax = plt.subplots(figsize=(1.5, 0.8), facecolor='none')
-                                ax.hist(col_clean, bins=min(15, max(5, len(col_clean) // 10)), color='#667eea', edgecolor='none')
+                                fig, ax = plt.subplots(figsize=(2.0, 0.9), facecolor='none')
+                                ax.hist(col_clean, bins=min(20, max(8, len(col_clean) // 10)), 
+                                       color='#667eea', edgecolor='#818cf8', linewidth=0.5, alpha=0.85)
                                 ax.set_xticks([])
                                 ax.set_yticks([])
-                                ax.spines['top'].set_visible(False)
-                                ax.spines['right'].set_visible(False)
-                                ax.spines['bottom'].set_visible(False)
-                                ax.spines['left'].set_visible(False)
+                                for spine in ax.spines.values():
+                                    spine.set_visible(False)
                                 ax.patch.set_alpha(0)
                                 
-                                # Save to base64
                                 buffer = BytesIO()
-                                plt.savefig(buffer, format='png', bbox_inches='tight', transparent=True, dpi=50)
+                                plt.savefig(buffer, format='png', bbox_inches='tight', transparent=True, dpi=80)
                                 buffer.seek(0)
                                 img_base64 = base64.b64encode(buffer.read()).decode()
                                 plt.close(fig)
                                 
-                                header_html += f"<img src='data:image/png;base64,{img_base64}' style='width: 100%; max-width: 120px;'/>"
-                                header_html += f"<div style='font-size: 0.7rem; margin-top: 3px;'>Min: {col_clean.min():.1f} | Max: {col_clean.max():.1f}</div>"
-                                header_html += f"<div style='font-size: 0.7rem;'>Mean: {col_clean.mean():.1f} | Unique: {col_data.nunique()}</div>"
+                                chart_html = f'<img src="data:image/png;base64,{img_base64}"/>'
+                                
+                                # Stats for numeric
+                                stats_html = f'''
+                                <div class="feature-card-stats">
+                                    <div class="stat-item">
+                                        <span class="stat-label">Min</span>
+                                        <span class="stat-value">{col_clean.min():.1f}</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span class="stat-label">Max</span>
+                                        <span class="stat-value">{col_clean.max():.1f}</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span class="stat-label">Mean</span>
+                                        <span class="stat-value">{col_clean.mean():.1f}</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span class="stat-label">Unique</span>
+                                        <span class="stat-value">{col_data.nunique()}</span>
+                                    </div>
+                                </div>
+                                '''
                         else:
                             # Categorical - Bar chart
-                            value_counts = col_data.value_counts().head(3)
+                            value_counts = col_data.value_counts().head(4)
                             total = len(col_data)
                             
                             if len(value_counts) > 0:
                                 percentages = (value_counts / total * 100)
                                 
-                                fig, ax = plt.subplots(figsize=(1.5, 0.8), facecolor='none')
-                                ax.barh(range(len(value_counts)), percentages.values, color='#764ba2')
+                                fig, ax = plt.subplots(figsize=(2.0, 0.9), facecolor='none')
+                                bars = ax.barh(range(len(value_counts)), percentages.values, 
+                                              color='#a78bfa', edgecolor='#c4b5fd', linewidth=0.5, alpha=0.85)
                                 ax.set_yticks(range(len(value_counts)))
-                                ax.set_yticklabels([str(v)[:8] for v in value_counts.index], fontsize=6, color='white')
+                                ax.set_yticklabels([str(v)[:10] for v in value_counts.index], 
+                                                  fontsize=7, color='#e2e8f0')
                                 ax.set_xticks([])
-                                ax.spines['top'].set_visible(False)
-                                ax.spines['right'].set_visible(False)
-                                ax.spines['bottom'].set_visible(False)
-                                ax.spines['left'].set_visible(False)
+                                for spine in ax.spines.values():
+                                    spine.set_visible(False)
                                 ax.patch.set_alpha(0)
                                 ax.invert_yaxis()
                                 
-                                # Add percentage labels
-                                for i, (idx, pct) in enumerate(zip(value_counts.index, percentages.values)):
-                                    ax.text(pct + 2, i, f'{pct:.0f}%', va='center', fontsize=6, color='white')
-                                
                                 buffer = BytesIO()
-                                plt.savefig(buffer, format='png', bbox_inches='tight', transparent=True, dpi=50)
+                                plt.savefig(buffer, format='png', bbox_inches='tight', transparent=True, dpi=80)
                                 buffer.seek(0)
                                 img_base64 = base64.b64encode(buffer.read()).decode()
                                 plt.close(fig)
                                 
-                                header_html += f"<img src='data:image/png;base64,{img_base64}' style='width: 100%; max-width: 120px;'/>"
-                                header_html += f"<div style='font-size: 0.7rem; margin-top: 3px;'>Unique: {col_data.nunique()} | Mode: {str(value_counts.index[0])[:10]}</div>"
+                                chart_html = f'<img src="data:image/png;base64,{img_base64}"/>'
+                                
+                                # Stats for categorical
+                                top_value = str(value_counts.index[0])[:12]
+                                stats_html = f'''
+                                <div class="feature-card-stats">
+                                    <div class="stat-item" style="grid-column: span 2;">
+                                        <span class="stat-label">Mode</span>
+                                        <span class="stat-value">{top_value}</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span class="stat-label">Unique</span>
+                                        <span class="stat-value">{col_data.nunique()}</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span class="stat-label">Top %</span>
+                                        <span class="stat-value">{percentages.iloc[0]:.0f}%</span>
+                                    </div>
+                                </div>
+                                '''
                         
-                        # Missing info
+                        cards_html += f'<div class="feature-card-chart">{chart_html}</div>'
+                        cards_html += stats_html
+                        
+                        # Missing info footer
                         missing_count = col_data.isnull().sum()
                         missing_pct = (missing_count / len(col_data) * 100) if len(col_data) > 0 else 0
-                        if missing_count > 0:
-                            header_html += f"<div style='font-size: 0.65rem; color: #ffaa00; margin-top: 2px;'>⚠️ Missing: {missing_count} ({missing_pct:.1f}%)</div>"
-                        else:
-                            header_html += f"<div style='font-size: 0.65rem; color: #44ff44; margin-top: 2px;'>✅ No missing</div>"
                         
-                        header_html += "</td>"
+                        cards_html += '<div class="feature-card-footer">'
+                        if missing_count > 0:
+                            cards_html += f'<span class="missing-warn">⚠️ {missing_count} missing ({missing_pct:.1f}%)</span>'
+                        else:
+                            cards_html += '<span class="missing-ok">✅ No missing</span>'
+                        cards_html += '</div>'
+                        
+                        cards_html += '</div>'  # Close feature-card
                     
-                    header_html += "</tr></table></div>"
+                    cards_html += '</div>'  # Close feature-cards-container
                     
-                    # Display header with charts
-                    st.markdown(header_html, unsafe_allow_html=True)
+                    # Display cards
+                    st.markdown(cards_html, unsafe_allow_html=True)
                 
                 st.markdown("---")
                 
@@ -1170,7 +1304,7 @@ QUAN TRỌNG:
                     cat_df = pd.DataFrame(cat_info)
                     st.dataframe(cat_df, width='stretch')
             
-            elif selected_tab == tabs[2]:
+            elif selected_tab == "📈 Phân Phối Dữ Liệu":
                 st.markdown("### 📈 Phân Phối & Tương Quan Dữ Liệu")
                 
                 viz_type = st.radio(
@@ -1284,7 +1418,7 @@ QUAN TRỌNG:
                     else:
                         st.warning("Cần ít nhất 2 biến số.")
             
-            elif selected_tab == tabs[3]:
+            elif selected_tab == "✨ Phân Tích AI":
                 st.markdown("### ✨ Phân Tích Tự Động Bằng AI")
                 
                 # Check LLM configuration
