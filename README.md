@@ -145,24 +145,10 @@ GOOGLE_API_KEY=your_api_key_here
 
 ## ▶️ Chạy Ứng Dụng
 
-### Cách 1: Sử dụng Streamlit CLI
-
 ```bash
 streamlit run app.py
 ```
 
-### Cách 2: Sử dụng script có sẵn
-
-**Windows:**
-```cmd
-RUN_APP.bat
-```
-
-**Linux/macOS:**
-```bash
-chmod +x RUN_APP.sh
-./RUN_APP.sh
-```
 
 ### Truy cập ứng dụng
 
@@ -336,36 +322,21 @@ credit-scoring-system/
 
 ## 🔑 Cấu Hình LLM (Optional)
 
-Để sử dụng tính năng AI (phân tích EDA, giải thích SHAP, Q&A), bạn cần cấu hình API key.
+Để sử dụng tính năng AI (phân tích EDA, giải thích SHAP, Q&A), bạn cần cấu hình Google Gemini API key.
 
-### Google Gemini (Khuyến khích - Có free tier)
+### Hướng dẫn lấy API Key
 
 1. Truy cập [Google AI Studio](https://aistudio.google.com/)
-2. Tạo API key
-3. Thêm vào file `.env`:
+2. Đăng nhập bằng tài khoản Google
+3. Tạo API key miễn phí
+4. Copy và thêm vào file `.env`:
+
 ```env
 GOOGLE_API_KEY=your_api_key_here
 GOOGLE_MODEL=gemini-2.5-flash
-LLM_PROVIDER=google
 ```
 
-### OpenAI GPT (Alternative)
-
-```env
-OPENAI_API_KEY=your_api_key_here
-OPENAI_MODEL=gpt-4
-LLM_PROVIDER=openai
-```
-
-### Anthropic Claude (Alternative)
-
-```env
-ANTHROPIC_API_KEY=your_api_key_here
-ANTHROPIC_MODEL=claude-3-sonnet-20240229
-LLM_PROVIDER=anthropic
-```
-
-> 💡 Không có API key? Ứng dụng vẫn hoạt động bình thường, chỉ thiếu tính năng AI analysis.
+> 💡 **Lưu ý**: Không có API key? Ứng dụng vẫn hoạt động bình thường, chỉ thiếu tính năng phân tích AI.
 
 ---
 
