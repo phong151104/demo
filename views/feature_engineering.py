@@ -1756,78 +1756,127 @@ def binning_fragment(data):
                                 binned = None
                             else:
                                 try:
-                                    from sklearn.tree import DecisionTreeClassifier
-                                    from sklearn import __version__ as sklearn_version
+                                    # Try using optbinning library (better IV optimization)
+                                    try:
+                                        from optbinning import OptimalBinning
+                                        use_optbinning = True
+                                    except ImportError:
+                                        use_optbinning = False
+                                        st.warning("⚠️ Thư viện `optbinning` chưa được cài đặt. Sử dụng Decision Tree fallback. Cài đặt bằng: `pip install optbinning`")
                                     
-                                    # Prepare data for finding optimal splits
-                                    X_bin = bin_data.values.reshape(-1, 1)
+                                    # Prepare data
+                                    X_bin = bin_data.values
                                     y_bin = st.session_state.data[target_col_for_binning].values
                                     
                                     # Remove NaN
-                                    mask = ~(np.isnan(X_bin.flatten()) | pd.isna(y_bin))
+                                    mask = ~(np.isnan(X_bin) | pd.isna(y_bin))
                                     X_clean = X_bin[mask]
-                                    y_clean = y_bin[mask]
+                                    y_clean = y_bin[mask].astype(int)
                                     
-                                    # Use Decision Tree to find optimal splits
-                                    # monotonic_cst available in sklearn >= 1.4
-                                    tree_params = {
-                                        'max_leaf_nodes': num_bins,
-                                        'min_samples_leaf': max(50, int(len(y_clean) * 0.05)),  # At least 5% per bin
-                                        'random_state': 42
-                                    }
-                                    
-                                    # Add monotonic constraint if enabled and sklearn supports it
-                                    if monotonic:
-                                        try:
-                                            # Check sklearn version for monotonic support
-                                            major, minor = map(int, sklearn_version.split('.')[:2])
-                                            if (major, minor) >= (1, 4):
-                                                tree_params['monotonic_cst'] = [1]  # 1 = increasing, -1 = decreasing
-                                        except:
-                                            pass
-                                    
-                                    tree = DecisionTreeClassifier(**tree_params)
-                                    tree.fit(X_clean, y_clean)
-                                    
-                                    # Get split points from tree
-                                    thresholds = tree.tree_.threshold
-                                    thresholds = thresholds[thresholds != -2]  # Remove leaf nodes
-                                    thresholds = sorted(thresholds)
-                                    
-                                    # Create bins with -inf and inf
-                                    bins = [-np.inf] + list(thresholds) + [np.inf]
-                                    
-                                    # Apply binning
-                                    binned = pd.cut(bin_data, bins=bins)
-                                    
-                                    # Calculate WoE and IV for display
-                                    woe_iv_info = []
-                                    total_good = (y_clean == 0).sum()
-                                    total_bad = (y_clean == 1).sum()
-                                    total_iv = 0
-                                    
-                                    for i, cat in enumerate(binned.cat.categories):
-                                        mask_bin = binned == cat
-                                        bin_good = ((st.session_state.data[target_col_for_binning] == 0) & mask_bin).sum()
-                                        bin_bad = ((st.session_state.data[target_col_for_binning] == 1) & mask_bin).sum()
+                                    if use_optbinning:
+                                        # Use optbinning library - optimizes IV directly
+                                        monotonic_trend = "ascending" if monotonic else "auto"
                                         
-                                        # Avoid division by zero
-                                        dist_good = max(bin_good / total_good, 0.0001) if total_good > 0 else 0.0001
-                                        dist_bad = max(bin_bad / total_bad, 0.0001) if total_bad > 0 else 0.0001
+                                        optb = OptimalBinning(
+                                            name=selected_bin_col,
+                                            dtype="numerical",
+                                            solver="cp",  # Constraint programming solver
+                                            max_n_bins=num_bins,
+                                            min_bin_size=0.05,  # At least 5% per bin
+                                            monotonic_trend=monotonic_trend,
+                                            special_codes=None,
+                                            cat_cutoff=None
+                                        )
+                                        optb.fit(X_clean, y_clean)
                                         
-                                        woe = np.log(dist_good / dist_bad)
-                                        iv = (dist_good - dist_bad) * woe
-                                        total_iv += iv
+                                        # Get splits from optbinning
+                                        splits = optb.splits
+                                        bins = [-np.inf] + list(splits) + [np.inf]
                                         
-                                        woe_iv_info.append({
-                                            'bin': i, 'range': str(cat), 
-                                            'good': bin_good, 'bad': bin_bad,
-                                            'woe': round(woe, 4), 'iv': round(iv, 4)
-                                        })
-                                    
-                                    # Store IV info for display
-                                    st.session_state._optimal_binning_iv = total_iv
-                                    st.session_state._optimal_binning_details = woe_iv_info
+                                        # Apply binning to full data
+                                        binned = pd.cut(bin_data, bins=bins)
+                                        
+                                        # Get WoE/IV from binning table
+                                        binning_table = optb.binning_table.build()
+                                        woe_iv_info = []
+                                        total_iv = 0
+                                        
+                                        for i, row in binning_table.iterrows():
+                                            if row['Bin'] not in ['Special', 'Missing', 'Totals']:
+                                                woe_val = row['WoE'] if not pd.isna(row['WoE']) else 0
+                                                iv_val = row['IV'] if not pd.isna(row['IV']) else 0
+                                                total_iv += iv_val
+                                                woe_iv_info.append({
+                                                    'bin': i, 
+                                                    'range': str(row['Bin']), 
+                                                    'good': int(row['Count (0)']) if 'Count (0)' in row else int(row.get('Count', 0) - row.get('Count (1)', 0)),
+                                                    'bad': int(row['Count (1)']) if 'Count (1)' in row else 0,
+                                                    'woe': round(woe_val, 4), 
+                                                    'iv': round(iv_val, 4)
+                                                })
+                                        
+                                        # Store IV info for display
+                                        st.session_state._optimal_binning_iv = total_iv
+                                        st.session_state._optimal_binning_details = woe_iv_info
+                                        
+                                    else:
+                                        # Fallback to Decision Tree based approach
+                                        from sklearn.tree import DecisionTreeClassifier
+                                        from sklearn import __version__ as sklearn_version
+                                        
+                                        # Use Decision Tree to find optimal splits
+                                        tree_params = {
+                                            'max_leaf_nodes': num_bins,
+                                            'min_samples_leaf': max(50, int(len(y_clean) * 0.05)),
+                                            'random_state': 42
+                                        }
+                                        
+                                        # Add monotonic constraint if enabled and sklearn supports it
+                                        if monotonic:
+                                            try:
+                                                major, minor = map(int, sklearn_version.split('.')[:2])
+                                                if (major, minor) >= (1, 4):
+                                                    tree_params['monotonic_cst'] = [1]
+                                            except:
+                                                pass
+                                        
+                                        tree = DecisionTreeClassifier(**tree_params)
+                                        tree.fit(X_clean.reshape(-1, 1), y_clean)
+                                        
+                                        # Get split points from tree
+                                        thresholds = tree.tree_.threshold
+                                        thresholds = thresholds[thresholds != -2]
+                                        thresholds = sorted(thresholds)
+                                        
+                                        bins = [-np.inf] + list(thresholds) + [np.inf]
+                                        binned = pd.cut(bin_data, bins=bins)
+                                        
+                                        # Calculate WoE and IV for display
+                                        woe_iv_info = []
+                                        total_good = (y_clean == 0).sum()
+                                        total_bad = (y_clean == 1).sum()
+                                        total_iv = 0
+                                        
+                                        for i, cat in enumerate(binned.cat.categories):
+                                            mask_bin = binned == cat
+                                            bin_good = ((st.session_state.data[target_col_for_binning] == 0) & mask_bin).sum()
+                                            bin_bad = ((st.session_state.data[target_col_for_binning] == 1) & mask_bin).sum()
+                                            
+                                            dist_good = max(bin_good / total_good, 0.0001) if total_good > 0 else 0.0001
+                                            dist_bad = max(bin_bad / total_bad, 0.0001) if total_bad > 0 else 0.0001
+                                            
+                                            woe = np.log(dist_good / dist_bad)
+                                            iv = (dist_good - dist_bad) * woe
+                                            total_iv += iv
+                                            
+                                            woe_iv_info.append({
+                                                'bin': i, 'range': str(cat), 
+                                                'good': bin_good, 'bad': bin_bad,
+                                                'woe': round(woe, 4), 'iv': round(iv, 4)
+                                            })
+                                        
+                                        st.session_state._optimal_binning_iv = total_iv
+                                        st.session_state._optimal_binning_details = woe_iv_info
                                     
                                 except Exception as e:
                                     st.error(f"❌ Lỗi Optimal Binning: {str(e)}")
